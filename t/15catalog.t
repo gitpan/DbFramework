@@ -46,6 +46,24 @@ for my $driver ( @t::Config::drivers ) {
 			       KEY f_foo(foo_foo,foo_bar),
 			       PRIMARY KEY (foo)
 			      )};
+  }  elsif ( $driver eq 'Pg' ) {
+    $t1 = qq{CREATE TABLE foo (foo integer not null,
+			       bar varchar(10) not null,
+			       baz varchar(10) not null,
+			       quux integer not null,
+			       foobar text,
+			       UNIQUE(bar,baz),
+			       UNIQUE(baz,quux),
+			       PRIMARY KEY (foo,bar)
+			      )};
+    $t2 = qq{CREATE TABLE bar (foo integer not null,
+			       -- foreign key (foo)
+			       foo_foo integer not null,
+			       foo_bar varchar(10) not null,
+			       bar integer,
+			       UNIQUE(foo_foo,foo_bar),
+			       PRIMARY KEY (foo)
+			      )};
   } elsif ( $driver eq 'Sybase' ) {
     $t1 = qq{CREATE TABLE foo (foo numeric(10,0) identity not null,
 			       bar varchar(10) not null,
@@ -63,6 +81,18 @@ for my $driver ( @t::Config::drivers ) {
 			       bar integer,
 			       UNIQUE (foo_foo,foo_bar),
 			       PRIMARY KEY (foo)
+			      )};
+  } elsif ( $driver eq 'CSV' ) {
+    $t1 = qq{CREATE TABLE foo (foo integer,
+			       bar varchar(10),
+			       baz varchar(10),
+			       quux integer,
+			       foobar varchar(255)
+			      )};
+    $t2 = qq{CREATE TABLE bar (foo integer,
+			       foo_foo integer,
+			       foo_bar varchar(10),
+			       bar integer
 			      )};
   } else { # ODBC syntax for auto increment is IDENTITY(seed,increment)
     $t1 = qq{CREATE TABLE foo (foo integer not null identity(0,1),

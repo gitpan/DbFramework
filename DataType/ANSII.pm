@@ -52,7 +52,7 @@ my $_sql_type_adjust = 1000;
 
 Create a new B<DbFramework::DataType> object.  I<$dm> is a
 B<DbFramework::DataModle> object.  I<$type> is a numeric ANSII type
-e.g. a type containd in the array reference returned by $sth->{TYPE}.
+e.g. a type contained in the array reference returned by $sth->{TYPE}.
 This method will die() unless I<$type> is a member of the set of ANSII
 types supported by the DBI driver.  I<$ansii_type> is the same as
 I<$type>.  I<$length> is the length of the data type.
@@ -78,7 +78,7 @@ sub new {
       print $type_names[$t->{DATA_TYPE} + $_sql_type_adjust],"\n" if $_debug;
     }
   }
-  print STDERR "\ntype = $type ($type_names[$type])\n\n" if $_debug;
+  print STDERR "type = $type ($type_names[$type])\n" if $_debug;
   $types[$type] || die "Invalid ANSII data type: $type";
 
   my $self = bless($class->SUPER::new($type_names[$type]),$class);

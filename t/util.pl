@@ -61,7 +61,7 @@ sub yn($$) {
   my $in = '';
   while ( 1 ) {
     print $prompt;
-    $in = <>;
+    $in = <STDIN>;
     last if $in =~ /^\n$/;
     chop $in;
     $in = uc($in);

@@ -7,7 +7,7 @@ use t::Config;
 BEGIN { 
   my $tests;
   for ( @t::Config::drivers ) { 
-    $tests += ($_ eq 'mSQL') ? 27 : 28;
+    $tests += ($_ ne 'mysql') ? 27 : 28;
   }
   plan tests => $tests;
 }
@@ -53,6 +53,15 @@ baz(VARCHAR (10) NOT NULL)
 quux(INTEGER UNSIGNED (11) NOT NULL)
 foobar(TEXT (65535))
 EOF
+} elsif ( $driver eq 'Pg' ) {
+    $ok_string = <<EOF;
+Table: foo
+foo(INT4)
+bar(VARCHAR)
+baz(VARCHAR)
+quux(INT4)
+foobar(TEXT)
+EOF
 } else {
     $ok_string = <<EOF;
 Table: foo
@@ -81,12 +90,14 @@ EOF
 
   # insert()
   my(@rows,$pk);
+  my $i = 0;
   for ('foo','bar','baz','quux') {
-    push(@rows,{ foo => 0, bar => $_ });
+    push(@rows,{ foo => 0, bar => $_, baz => 'foo', quux => $i });
+    $i++;
   }
   for ( @rows ) { $pk = $foo_table->insert($_) }
   
-  if ( $driver eq 'mSQL' ) { # doesn't support auto_increment
+  if ( $driver =~ /(mSQL|Pg)/ ) { # no auto_increment
     ok(1);
   } else {
     ok($pk,$#rows + 1);
@@ -96,7 +107,7 @@ EOF
   my @lol = $foo_table->select(['foo']);
   ok(@lol,4);
 
-  unless ( $driver eq 'mSQL' ) {
+  if ( $driver eq 'mysql' ) {
     # apply a function to a column in a 'SELECT...'
     my @loh = $foo_table->select_loh([q[lpad(foo,2,'0')]]);
     ok($loh[0]->{q[lpad(foo,2,'0')]},'01');

@@ -17,13 +17,13 @@ database '$catalog_db' and a database which can be used for testing.
 
 Press return to continue.
 EOF
-<>;
+<STDIN>;
 
-my $config    = 't/Config.pm';
+my $config = 't/Config.pm';
 
 unless ( -f $config && yn("$config exists, use it?",1) ) {
   # select drivers to test
-  my @drivers = qw/mysql mSQL Sybase ODBC/;
+  my @drivers = qw/mysql mSQL Pg/;
   print "Enter (space seperated) DBI drivers to test: [@drivers] ";
   my $drivers = <STDIN>;
   chop $drivers;
@@ -34,7 +34,7 @@ unless ( -f $config && yn("$config exists, use it?",1) ) {
   for my $driver ( @drivers ) {
     print "\nConfiguring for driver 'DBI:$driver'\n";
     print "Enter the name of your test database: [$test_db] ";
-    $_ = <>; chop; 
+    $_ = <STDIN>; chop; 
     $test_db = $_ unless $_ eq '';
     print "\n";
     for my $db ( $catalog_db, $test_db ) {
@@ -42,7 +42,7 @@ unless ( -f $config && yn("$config exists, use it?",1) ) {
       my $dsn = "DBI:$driver:$db";
       print qq{Enter the portion of the DSN that DBD::$driver will use to connect()
 to $db i.e. 'DBI:$driver:[dsn_string]': [$db] };
-      $_ = <>; chop;
+      $_ = <STDIN>; chop;
       $driver{$driver}->{$db}->{dsn} = ($_ ne '') ? "DBI:$driver:$_" : $dsn;
       ($driver{$driver}->{$db}->{u},$driver{$driver}->{$db}->{p})
 	= DbFramework::Util::get_auth();
@@ -153,7 +153,69 @@ EOF
 
 # return a hashref containing DDL to create the catalog for various drivers
 sub catalog_schema {
-  return { mysql => { c_db => q{
+  return { Pg => { c_db => q{
+CREATE TABLE c_db (
+		   db_name varchar(50) DEFAULT '' NOT NULL,
+		   PRIMARY KEY (db_name)
+		  )
+},
+		      c_key => q{
+CREATE TABLE c_key (
+		    db_name varchar(50) DEFAULT '' NOT NULL,
+		    table_name varchar(50) DEFAULT '' NOT NULL,
+		    key_name varchar(50) DEFAULT '' NOT NULL,
+		    key_type int DEFAULT '0' NOT NULL,
+		    key_columns varchar(255) DEFAULT '' NOT NULL,
+		    PRIMARY KEY (db_name,table_name,key_name)
+		   )
+},
+		      c_relationship => q{
+CREATE TABLE c_relationship (
+			     db_name varchar(50) DEFAULT '' NOT NULL,
+			     fk_table varchar(50) DEFAULT '' NOT NULL,
+			     fk_key varchar(50) DEFAULT '' NOT NULL,
+			     pk_table varchar(50) DEFAULT '' NOT NULL,
+			     PRIMARY KEY (db_name,fk_table,fk_key,pk_table)
+			    )
+},
+		      c_table => q{
+CREATE TABLE c_table (
+		      table_name varchar(50) DEFAULT '' NOT NULL,
+		      db_name varchar(50) DEFAULT '' NOT NULL,
+		      labels varchar(127) DEFAULT '',
+		      PRIMARY KEY (table_name,db_name)
+		     )
+} },
+	   CSV => { c_db => q{
+CREATE TABLE c_db (
+		   db_name varchar(50)
+		  )
+},
+		    c_key => q{
+CREATE TABLE c_key (
+		    db_name varchar(50),
+		    table_name varchar(50),
+		    key_name varchar(50),
+		    key_type int,
+		    key_columns varchar(255)
+		   )
+},
+		    c_relationship => q{
+CREATE TABLE c_relationship (
+			     db_name varchar(50),
+			     fk_table varchar(50),
+			     fk_key varchar(50),
+			     pk_table varchar(50)
+			    )
+},
+		    c_table => q{
+CREATE TABLE c_table (
+		      table_name varchar(50),
+		      db_name varchar(50),
+		      labels varchar(127)
+		     )
+} },
+	   mysql => { c_db => q{
 CREATE TABLE c_db (
 		   db_name varchar(50) DEFAULT '' NOT NULL,
 		   PRIMARY KEY (db_name)

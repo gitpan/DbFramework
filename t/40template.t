@@ -35,11 +35,11 @@ sub foo($) {
   ok($t->fill,$ok);
 
   $t->template->text("(:&db_fk_html_form_field(bar.f_foo):)");
-  if ( $driver eq 'mSQL' ) {
+  if ( $driver =~ /(mSQL|Pg)/ ) {
     $ok = qq{<SELECT NAME="foo_foo,foo_bar">
 <OPTION  VALUE="">** Any Value **
 <OPTION  VALUE="NULL">NULL
-<OPTION  VALUE="0,bar">bar
+<OPTION  VALUE="0,baz">baz
 </SELECT>
 };
   } else {

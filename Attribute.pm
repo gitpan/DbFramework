@@ -30,7 +30,7 @@ B<DbFramework::Util>
 package DbFramework::Attribute;
 use strict;
 use base qw(DbFramework::Util);
-use vars qw( $NAME $DEFAULT_VALUE $IS_OPTIONAL $REFERENCES $BGCOLOR);
+use vars qw($_DEBUG $NAME $DEFAULT_VALUE $IS_OPTIONAL $REFERENCES $BGCOLOR);
 use Alias;
 
 ## CLASS DATA
@@ -138,7 +138,7 @@ sub as_html_form_field {
   my $self   = attr shift;
   my $value  = defined($_[0]) ? $_[0] : '';
   my $type   = defined($_[1]) ? uc($_[1]) : $REFERENCES->name;
-  my $length = $REFERENCES->length;
+  my $length = $REFERENCES->length || 10;
   my $html;
 
 SWITCH: {

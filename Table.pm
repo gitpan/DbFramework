@@ -323,27 +323,25 @@ sub init_db_metadata {
   my $self  = attr shift;
   my $catalog = shift;
 
+  my $driver = $self->belongs_to->driver;
   my($sql,$sth,$rows,$rv);
   # query to get typeinfo
-  if ( ! defined($self->belongs_to) || $self->belongs_to->driver eq 'mSQL' ) {
+  if ( ! defined($self->belongs_to) || $driver eq 'mSQL' ) {
     $sql   = qq{SELECT * FROM $NAME};
   } else {
     # more efficient query for getting typeinfo but not supported by mSQL
     $sql   = qq{SELECT * FROM $NAME WHERE 1 = 0};
   }
-  $sth = $DBH->prepare($sql) || die($DBH->errstr);
-  $rv  = $sth->execute       || die($sth->errstr);
+  $sth = DbFramework::Util::do_sql($DBH,$sql);
   
   my %datatypes = ( mysql => 'Mysql' ); # driver-specific datatype classes
   my @columns;
   for ( my $i = 0; $i < $sth->{NUM_OF_FIELDS}; $i++ ) {
-
     my $class = ( defined($self->belongs_to) && 
-		  exists($datatypes{$self->belongs_to->driver}) 
+		  exists($datatypes{$driver}) 
 		)
-      ? $datatypes{$self->belongs_to->driver}
+      ? $datatypes{$driver}
       : 'ANSII';
-    
     my $name = $sth->{NAME}->[$i];
   # if driver-specific class exists, get the driver-specific type
     my($type,$ansii_type,$default,$extra);
@@ -365,10 +363,12 @@ sub init_db_metadata {
     };
   }
     $class = "DbFramework::DataType::$class";
+    my $precision = $sth->{PRECISION}->[$i];
+
     my $d = $class->new($self->belongs_to,
 			$type,
 			$ansii_type,
-			$sth->{PRECISION}->[$i],
+			$precision,
 			$extra,
 		       );
     my $a = new DbFramework::Attribute($sth->{NAME}->[$i],

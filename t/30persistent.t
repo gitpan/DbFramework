@@ -37,36 +37,36 @@ sub foo($) {
   ok(1);
 
   # insert
-  $foo->attributes_h(['foo',0,'bar','bar']);
-  my $pk = ($driver eq 'mSQL') ? -1 : 1;
+  $foo->attributes_h(['foo',0,'bar','bar','baz','baz','quux',0]);
+  my $pk = ($driver =~ /(mSQL|Pg)/ ) ? -1 : 1;
   ok($foo->insert,$pk);
-  my %foo = ( foo => 0, bar => 'baz' );
+  my %foo = ( foo => 0, bar => 'baz', baz => 'baz', quux => 1 );
   $foo->attributes_h([ %foo ]);
-  $pk = ($driver eq 'mSQL') ? -1 : 2;
+  $pk = ($driver =~ /(mSQL|Pg)/ ) ? -1 : 2;
   ok($foo->insert,$pk);
   my @foo = $foo->attributes_h_byname('foo','bar');
   ok($foo[1],$foo{bar});
 
   # update
-  $pk = ($driver eq 'mSQL') ? 0 : 2;
-  $foo->attributes_h(['foo',$pk,'bar','baz','baz','baz']);
-  my $rows = ($driver eq 'mSQL') ? -1 : 1;
+  $pk = ($driver =~ /(mSQL|Pg)/ ) ? 0 : 2;
+  $foo->attributes_h(['foo',$pk,'bar','baz','baz','quux']);
+  my $rows = ($driver =~ /mSQL/ ) ? -1 : 1;
   ok($foo->update,$rows);
 
   # select
   $foo->attributes_h([]);
   @foo = $foo->select(undef,'bar');
   my @a = $foo[0]->attributes_h_byname('foo','bar');
-  $pk = ($driver eq 'mSQL') ? 0 : 1;
+  $pk = ($driver =~ /(mSQL|Pg)/ ) ? 0 : 1;
   ok("@a","$pk bar");
   @a  = $foo[1]->attributes_h_byname('foo','bar');
-  $pk = ($driver eq 'mSQL') ? 0 : 2;
+  $pk = ($driver =~ /(mSQL|Pg)/ ) ? 0 : 2;
   ok("@a","$pk baz");
-  @foo = $foo->select(q{bar like 'b%'});
+  @foo = $foo->select(q{bar like 'b%'},'foo,bar');
   ok(@foo,2);
 
   # delete
-  $rows = ($driver eq 'mSQL') ? -1 : 1;
+  $rows = ($driver =~ /mSQL/ ) ? -1 : 1;
   ok($foo[0]->delete,$rows);
 
   # make persistent (sub)class

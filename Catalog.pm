@@ -239,7 +239,18 @@ sub set_foreign_keys {
   my $db_name    = $DBH->quote($dm->db);
   for my $table ( @{$dm->collects_table_l} ) {
     my $table_name = $DBH->quote($table->name);
-    my $sql        = qq{
+    my $sql;
+    if ( $dm->driver eq 'CSV' ) {
+      $sql = qq{
+SELECT key_name,key_columns,pk_table
+FROM   c_relationship,c_key WHERE  c_relationship.db_name  = $db_name
+AND    c_relationship.fk_table = $table_name
+AND    c_relationsihp.db_name  = c_key.db_name
+AND    c_relationship.fk_table = c_key.table_name
+AND    c_relationship.fk_key   = c_key.key_name
+};
+    } else {
+      $sql = qq{
 SELECT k.key_name,k.key_columns,r.pk_table
 FROM   c_relationship r, c_key k
 WHERE  r.db_name  = $db_name
@@ -248,6 +259,7 @@ AND    r.db_name  = k.db_name
 AND    r.fk_table = k.table_name
 AND    r.fk_key   = k.key_name
 };
+  }
     print STDERR "$sql\n" if $_DEBUG;
     my $sth = DbFramework::Util::do_sql($DBH,$sql);
     while ( my $rowref = $sth->fetchrow_arrayref ) {

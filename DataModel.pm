@@ -147,13 +147,15 @@ primary key match.
 
 sub init_db_metadata {
   my $self = attr shift;
-
   my $c = new DbFramework::Catalog(@_);
 
   # add tables
   my($table,@tables,@byname);
-  for $table ( $DBH->tables ) {
-    my $table = DbFramework::Table->new($table,undef,undef,$DBH,$self);
+  my $sth = $DBH->table_info;
+  while ( my @table_info = $sth->fetchrow_array ) {
+    my $table_name = $table_info[2];
+    print STDERR "table: $table_name, table_info = @table_info\n" if $_DEBUG;
+    my $table = DbFramework::Table->new($table_name,undef,undef,$DBH,$self);
     push(@tables,$table->init_db_metadata($c));
     print STDERR "table: ",$table->name," pk: ",join(',',$table->is_identified_by->attribute_names),"\n" if $_DEBUG;
   }

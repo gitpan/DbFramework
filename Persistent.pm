@@ -34,7 +34,7 @@ B<DbFramework::Util>
 package DbFramework::Persistent;
 use strict;
 use vars qw( $TABLE $_DEBUG $VERSION %ATTRIBUTES_H $CATALOG );
-$VERSION = '1.09';
+$VERSION = '1.10';
 use base qw(DbFramework::Util);
 use Alias;
 use DbFramework::Table;

@@ -76,7 +76,9 @@ $c_dsn  = $cgi->param('c_dsn')   || die "No catalog DBI string specified";
 $host   = $cgi->param('host')    || undef;
 $form   = $cgi->param('form')    || 'input';
 $action = $cgi->param('action')  || 'select';
-$dm     = new DbFramework::DataModel($db,"DBI:$db_dsn;host=$host");
+$dsn    = "DBI:$db_dsn";
+$dsn    = "$dsn;host=$host" if $host;
+$dm     = new DbFramework::DataModel($db,$dsn);
 $dm->dbh->{PrintError} = 0;  # ePerl chokes on STDERR
 $dbh = $dm->dbh; $dbh->{PrintError} = 0;
 $dm->init_db_metadata("DBI:$c_dsn");

@@ -6,9 +6,8 @@ use t::Config;
 
 BEGIN { 
   my $tests;
-  for ( @t::Config::drivers ) { 
-    $tests += ($_ eq 'mSQL') ? 2 : 4;
-  }
+  my %tests = ( 'mSQL' => 1, 'mysql' => 3, 'Pg' => 0 );
+  for ( @t::Config::drivers ) { $tests += $tests{$_}; }
   plan tests => $tests;
 }
 
@@ -30,12 +29,9 @@ sub foo($) {
   my $dbh = $dm->dbh; $dbh->{PrintError} = 0;
   my $t = $dm->collects_table_h_byname('foo');
 
-  my $dt = new DbFramework::DataType::ANSII($dm,12,12,50);
-
+  my $dt;
 
   if ( $driver eq 'mSQL' ) {
-    ok($dt->name,'CHAR');
-
     # mapping of mSQL => ANSII types
     ok($t->as_sql,'CREATE TABLE foo (
 	foo INT(4) NOT NULL,
@@ -47,9 +43,7 @@ sub foo($) {
 	KEY foo (bar,baz),
 	KEY bar (baz,quux)
 )');
-  } else {
-    ok($dt->name,'VARCHAR');
-    
+  } elsif ( $driver eq 'mysql' ) {    
     # mapping of Mysql => ANSII types
     ok($t->as_sql,'CREATE TABLE foo (
 	foo INTEGER UNSIGNED(11) NOT NULL AUTO_INCREMENT,

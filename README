@@ -9,8 +9,6 @@ This module will help you to
 
 See the POD for further details.
 
-paul@miraclefish.com
-
 Prerequisites
 =============
 
@@ -18,11 +16,24 @@ Prerequisites
   Alias
   CGI
   URI::Escape
-  DBI 1.06 or later
+  DBI 1.06
   Text::FillIn
   Term::ReadKey
 
-  ** Msql-Mysql-modules-1.21_15 or later (if you want to use Mysql or mSQL) **
+DbFramework has been successfully built and tested on (at least) the
+following configurations.  In general the driver version is VERY
+IMPORTANT as DbFramework makes use of some of the newer DBI metadata
+methods which may only be implemented in development branches of
+certain drivers.
+
+  OS		   Driver		      Database
+  ================ ========================== ===================
+  RedHat Linux 5.1 Msql-Mysql-modules-1.21_15 Mysql 3.22.14-gamma
+		   Msql-Mysql-modules-1.21_15 Msql 2.0.8
+		   DBD-Pg-0.91                PostgreSQL 6.4.2
+
+Note that DBD::CSV is unlikely to be supported in the near future due
+to the limitations of this driver.
 
 Installation
 ============
@@ -40,16 +51,21 @@ Installation
 To use forms/dbforms.cgi, install it in a CGI directory then 'perldoc
 forms/dbforms.cgi'.
 
-DbFramework has been successfully built and tested on (at least) the
-following configurations:
-
-	RedHat Linux 5.1
-	Mysql 3.22.14-gamma
-	Msql 2.0.8
+paul@miraclefish.com
 
 
 History
 =======
+
+15-05-1999               Paul Sharpe          <paul@miraclefish.com>
+--------------------------------------------------------------------
+RELEASE 1.10
+
+Added support for PostgreSQL.
+
+INTERFACE CHANGES
+  PrimaryKey::
+    - New method as_hidden_html()
 
 30-04-1999               Paul Sharpe          <paul@miraclefish.com>
 --------------------------------------------------------------------

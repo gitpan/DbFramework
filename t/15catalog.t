@@ -13,8 +13,7 @@ use DbFramework::DataModel;
 use DbFramework::Table;
 
 my($t1,$t2);
-
-if ( grep(/mysql/,@t::Config::drivers) ) { 
+if ( grep(/mysql/,@t::Config::drivers) ) {
   $t1 = qq{CREATE TABLE foo (foo integer not null auto_increment,
 			     bar varchar(10) not null,
 			     baz varchar(10) not null,
@@ -53,14 +52,16 @@ if ( grep(/mSQL/,@t::Config::drivers) ) {
 
 sub foo($$$$$) {
   my($driver,$t1,$t1_sql,$t2,$t2_sql) = @_;
+
   my $c = new DbFramework::Catalog("DBI:$driver:database=$DbFramework::Catalog::db");
   ok(1);
 
-  my $db  = 'dbframework_test';
-  my $dsn = "DBI:$driver:database=$db";
-  my $dm  = new DbFramework::DataModel($db,$dsn);
-  my $dbh = $dm->dbh; $dbh->{PrintError} = 0;
-
+  my $dsn = "DBI:$driver:database=$t::Config::test_db";
+  my $dbh = DbFramework::Util::get_dbh($dsn);
+  $dbh->{PrintError} = 0; # don't warn about dropping non-existent tables
+  drop_create($t::Config::test_db,$t1,undef,$t1_sql,$dbh);
+  drop_create($t::Config::test_db,$t2,undef,$t2_sql,$dbh);
+  my $dm  = new DbFramework::DataModel($t::Config::test_db,$dsn);
   $dm->init_db_metadata;
 
   # test primary keys

@@ -14,8 +14,8 @@ paul@miraclefish.com
 Prerequisites
 =============
 
+  Perl 5.005
   Alias
-  Pod::Usage
   CGI
   DBI 1.06 or later
   Msql-Mysql-modules-1.21_15 or later
@@ -48,6 +48,13 @@ following configurations:
 
 History
 =======
+
+1-04-1999                   Paul Sharpe                  <paul@miraclefish.com>
+-------------------------------------------------------------------------------
+RELEASE 1.08
+
+BUG FIX
+  - Test database wasn't being created which was causing tests to fail.
 
 28-03-1999                  Paul Sharpe                  <paul@miraclefish.com>
 -------------------------------------------------------------------------------

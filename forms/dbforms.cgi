@@ -106,7 +106,7 @@ under the same terms as Perl itself.
     my $thing = shift;
     my %attributes;
     for ( $thing->table->attribute_names ) {
-      $attributes{$_} = $cgi->param($_)
+      $attributes{$_} = $cgi->param($_) ne '' ? $cgi->param($_) : undef;
     }
     $thing->attributes_h([%attributes]);
   }

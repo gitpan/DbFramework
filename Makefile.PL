@@ -28,6 +28,7 @@ open(CONFIG,">$config") || die "Couldn't open config file: $config: $!";
 print STDERR "Writing config file: $config\n";
 print CONFIG qq{package t::Config;
 
+\$test_db    = 'dbframework_test';
 \@drivers    = qw/@drivers/;
 \%catalog_db = (};
 		
@@ -44,7 +45,7 @@ WriteMakefile(
     'NAME'	   => 'DbFramework::Persistent',
     'DISTNAME'     => 'DbFramework',
     'VERSION_FROM' => 'Persistent.pm',
-    'PREREQ_PM'    => { 'Alias' => 0, 'Pod::Usage' => 0, 'DBI' => 1.06 },
+    'PREREQ_PM'    => { 'Alias' => 0, 'DBI' => 1.06 },
     'PMLIBDIRS'    => [ 'DataType' ],
     'clean'        => { FILES => "t/Config.pm TAGS" },
     'linkext'      => { LINKTYPE=>'' },

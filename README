@@ -67,6 +67,11 @@ History
 
 11-Dec-1998                 Paul Sharpe                  <paul@miraclefish.com>
 -------------------------------------------------------------------------------
+RELEASE 1.03
+- Bug fixes.
+
+11-Dec-1998                 Paul Sharpe                  <paul@miraclefish.com>
+-------------------------------------------------------------------------------
 RELEASE 1.02
 - dbforms.cgi HTML forms application
 - Bug fixes: Table::select(), Attribute::as_html_form_field()

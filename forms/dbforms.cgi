@@ -1,6 +1,5 @@
 #!/usr/local/bin/eperl -mc
 <?
-  use lib qw{/usr/local/import/spwebdev/share/home/paul/work/DbFramework-release-1-0/blib/lib /home/paul/src/DbFramework-release-1-0/blib/lib};
   use DbFramework::Util;
   use DbFramework::Persistent;
   use DbFramework::DataModel;

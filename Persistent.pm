@@ -46,7 +46,7 @@ B<DbFramework::Util>
 package DbFramework::Persistent;
 use strict;
 use vars qw( $TABLE $_DEBUG $VERSION );
-$VERSION = '1.02';
+$VERSION = '1.03';
 use base qw(DbFramework::Util);
 use Alias;
 use DbFramework::Table;

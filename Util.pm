@@ -1,0 +1,223 @@
+=head1 NAME
+
+DbFramework::Util - DbFramework utility functions
+
+=head1 SYNOPSIS
+
+  use DbFramework::Util;
+  ($user,$password) = DbFramework::Util::get_auth();
+  $dbh = DbFramework::Util::get_dbh($db,$host,$port,$user,$password);
+  $object->get_db($dbh);
+
+=head1 DESCRIPTION
+
+I<DbFramework::Util> contains miscellaneous utility functions and acts
+as a base class for many other B<DbFramework> classes.
+
+=cut
+
+package DbFramework::Util;
+use strict;
+use vars qw($AUTOLOAD);
+use IO::File;
+use DBI;
+use Carp;
+
+## CLASS DATA
+
+my $Debugging = 0;
+
+=head1 BASE CLASS METHODS
+
+=head2 AUTOLOAD()
+
+AUTOLOAD() provides default accessor methods (apart from DESTROY())
+for any of its subclasses.  For AUTOLOAD() to catch calls to these
+methods objects must be implemented as an anonymous hash.  Object
+attributes must
+
+=over 4
+
+=item *) have UPPER CASE names
+
+=item *) have keys in attribute _PERMITTED (an anonymous hash)
+
+=back
+
+The name accessor method is the name of the attribute in B<lower
+case>.  The 'set' versions of these accessor methods require a single
+scalar argument (which could of course be a reference.)  Both 'set'
+and 'get' versions return the attribute's value.
+
+B<Special Attributes>
+
+=over 4
+
+=item B</_L$/>
+
+Attribute names matching the pattern B</_L$/> will be treated as
+arrayrefs.  These accessors require an arrayref as an argument.  If
+the attribute is defined they return the arrayref, otherwise they
+return an empty arrayref.
+
+A method B<*_l_add(@foo)> can be called on this type of attribute to
+add the elements in I<@foo> to the array.  If the attribute is defined
+they return the arrayref, otherwise they return an empty arrayref.
+
+=back
+
+=item B</_H$/>
+
+Attribute names matching the pattern B</_H$/> will be treated as
+hashrefs.  These accessors require a reference to an array containing
+key/value pairs.  If the attribute is defined they return the hashref,
+otherwise they return an empty hashref.
+
+A method B<*_h_byname(@list)> can be called on this type of attribute.
+These methods will return a list which is the hash slice of the B<_H>
+attribute value over I<@list> or an empty list if the attribute is
+undefined.
+
+A method B<*_h_add(\%foo)> can be called on this type of attribute to
+add the elements in I<%foo> to the hash.  If the attribute is defined
+they return the hashref, otherwise they return an empty hashref.
+=back
+
+=cut
+
+sub AUTOLOAD {
+  my $self  = shift;
+  my $type  = ref($self) or die "$self is not an object";
+  warn "AUTOLOAD($AUTOLOAD)" if $self->{_DEBUG} || $Debugging;
+
+  my $method = $AUTOLOAD;
+  $method =~ s/.*://;     # strip fully-qualified portion
+
+  # accessor methods
+  $method = uc($method);
+  return if ( $method eq 'DESTROY' );  # don't catch 'DESTROY'
+  my $name = $method;
+  $name =~ s/_H_BYNAME|_H_ADD$/_H/;
+  $name =~ s/_L_ADD$/_L/;
+  unless ( exists $self->{_PERMITTED}->{$name} ) {
+    die "Can't access `$name' field in class $type";
+  }
+
+  if ( $method =~ /_L$/ ) {             # set/get array
+    @{$self->{$name}} = @{$_[0]} if $_[0];
+    return defined($self->{$name}) ? $self->{$name} : [];
+  } elsif ( $method =~ /_L_ADD$/ ) {    # add to array
+    print STDERR "\@_ = @_\n" if $self->{_DEBUG};
+    push(@{$self->{$name}},@_);
+    return defined($self->{$name}) ? $self->{$name} : [];
+  } elsif ( $method =~ /_H$/ ) {        # set/get hash
+    %{$self->{$name}} = @{$_[0]} if $_[0];
+    return defined($self->{$name}) ? $self->{$name} : {};
+  } elsif ( $method =~ /_H_ADD$/ ) {    # add to hash
+    while ( my($k,$v) = each(%{$_[0]}) ) { $self->{$name}->{$k} = $v }
+    return defined($self->{$name}) ? $self->{$name} : {};
+  } elsif ( $method =~ /_H_BYNAME$/ ) { # get hash values by name
+    print STDERR "$self $name byname: @_\n" if $self->{_DEBUG};
+    return defined($self->{$name}) ? @{$self->{$name}}{@_} : ();
+  }
+  else {                                # set/get scalar
+    return @_ ? $self->{$name} = shift : $self->{$name};
+  }
+}
+
+#------------------------------------------------------------------------------
+
+=head2 debug($n)
+
+As a class method, sets the class attribute I<$Debugging> to I<$n>.
+Aa an object method, sets the object attribute I<$_DEBUG> to I<$n>.
+
+=cut
+
+sub debug {
+  my $self = shift;
+  confess "usage: thing->debug(level)" unless @_ == 1;
+  my $level = shift;
+  if (ref($self))  {
+    $self->{"_DEBUG"} = $level;         # just myself
+  } else {
+    $Debugging        = $level;         # whole class
+  }
+}
+
+#------------------------------------------------------------------------------
+
+=head1 UTILITY FUNCTIONS
+
+=head2 get_auth()
+
+Read (I<$user>,I<$password>) from standard input with no echo when
+entering password.
+
+=cut
+
+sub get_auth {
+  chop(my $tty = `tty`);
+  my $tty_h = new IO::File($tty,'r+');
+
+  print $tty_h "Username: ";
+  chop(my $user = <STDIN>);
+  print $tty_h "Password: ";
+  system "stty -echo";
+  chop(my $password = <STDIN>);
+  print $tty_h "\n";
+  system "stty echo";
+
+  return($user,$password);
+}
+
+#------------------------------------------------------------------------------
+
+=head2 get_dbh($db,$host,$port,$user,$password)
+
+Return a Mysql database handle for I<$db> (and optionally I<$host> and
+I<$port>) by connecting using I<$user> and I<$password>.
+
+=cut
+
+sub get_dbh {
+  my($db,$host,$port,$user,$password) = @_;
+  my $driver = "DBI:mysql:$db";
+  if ( defined($host) ) {
+    $driver .= ":$host";
+    $driver .= ":$port" if defined($port);
+  }
+  print STDERR "\$driver = $driver" if $Debugging;
+  return DBI->connect($driver,$user,$password) || die("$driver $DBI::errstr");
+}
+
+#------------------------------------------------------------------------------
+
+=head2 get_db($dbh)
+
+Get the name of the database from the B<DBI> database handle I<$dbh>.
+
+=cut
+
+sub get_db {
+  my($self,$dbh) = @_;
+
+  my $sth   = $dbh->prepare('SELECT DATABASE()') || die($dbh->errstr);
+  my $rv    = $sth->execute                      || die($sth->errstr);
+  my($name) = $sth->fetchrow_array;
+  $name;
+}
+
+1;
+
+=head1 AUTHOR
+
+Paul Sharpe E<lt>paul@miraclefish.comE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (c) 1997,1998 Paul Sharpe. England.  All rights reserved.
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=cut

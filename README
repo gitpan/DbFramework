@@ -1,0 +1,109 @@
+DbFramework is a collection of classes for manipulating Mysql
+databases.  The classes are loosely based on the CDIF Data Model
+Subject Area (http://www.cdif.org/).  There are methods for
+representing data model objects as HTML and a class which can be
+subclassed to add persistency to Perl objects.  See the POD for
+further details.
+
+The classes are used by a CGI application which presents an HTML forms
+interface for manipulating Mysql databases.
+
+paul@miraclefish.com
+
+Prerequisites
+=============
+
+  Alias
+  CGI
+  DBI
+  Msql-Mysql-modules
+  ePerl (for dbforms.cgi)
+
+Installation
+============
+
+  1) Ensure you have installed the prerequisites above.
+
+  2)  perl Makefile.PL
+      make
+      make test (requires 2 Mysql databases: 'test, 'music')
+      make install
+
+HTML forms application
+----------------------
+Read the 'DATA MODEL RULES' section in the DataModel man page for
+important information on how to create your database schemas.
+
+Install forms/dbforms.cgi in a CGI directory.  Call it with
+
+http://host/cgi_path/dbforms.cgi?db=foo
+
+where 'foo' is the name of a Mysql database.
+
+
+To do
+=====
+
+* Make Bundle::DbFramework
+
+* Schema grammar
+  - might be better off using Jeeves (from the Panther book)
+  - should handle relationships of degree >2
+  - could be CDIF compliant
+
+* Attributes of relationships should be stored so that full schema
+  including attributes of relationships can be built from meta-data.
+
+* Generic add, modify, delete support (a la Msql-RDBMS?)
+
+* add support for UNIQUE columns (different to ordinary KEYs)
+
+* make primary key in grammar optional (1:1 relationships) 
+
+* make relationships optional in grammar
+
+History
+=======
+
+11-Dec-1998                 Paul Sharpe                  <paul@miraclefish.com>
+-------------------------------------------------------------------------------
+RELEASE 1.02
+- dbforms.cgi HTML forms application
+- Bug fixes: Table::select(), Attribute::as_html_form_field()
+- INTERFACE
+  *_h_byname() methods take an array rather than an arrayref
+  Persistent::
+    - New method make_class()
+    - New method fill_template()
+    - New method as_html_form()
+    - fill_template() now takes $name argument
+  Table
+    - New method in_foreign_key()
+    - as_html_form() doesn't return <FORM></FORM> container so doesn't
+      require $action argument.
+    - New method in_key()
+    - New method in_primary_key()
+    - New method in_any_key()
+    - New method non_key_attributes()
+    - Removed method html_pk_select_field()
+    - New attribute/methods HAS_FOREIGN_KEYS_H
+    - fill_template() now supports <DbFKey table.name> placeholders.
+  Key
+    - New method belongs_to()
+    - new() now takes a reference to a hash of templates.
+    - fill_template() now takes a template name and reference to a hash of
+      values.
+    - templates() removed
+    - New method set_templates()
+    - New method bgcolor()
+  Attribute
+    - New method _input_template()
+    - New method _output_template()
+    - New method bgcolor()
+  PrimaryKey
+    - New method html_select_field()
+
+26-Nov-1998                 Paul Sharpe                  <paul@miraclefish.com>
+-------------------------------------------------------------------------------
+RELEASE 1.01 (FIRST PUBLIC RELEASE)
+

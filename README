@@ -1,12 +1,11 @@
-DbFramework is a collection of classes for manipulating Mysql
-databases.  The classes are loosely based on the CDIF Data Model
-Subject Area.
+DbFramework is a collection of classes for manipulating DBI databases.
+The classes are loosely based on the CDIF Data Model Subject Area.
 
 This module will help you to
 
   - Present data model objects (tables, columns) as HTML
   - Add persistency to your Perl objects
-  - Manipulate your Mysql databases through an HTML forms interface
+  - Manipulate DBI databases through an HTML forms interface
 
 See the POD for further details.
 
@@ -16,9 +15,11 @@ Prerequisites
 =============
 
   Alias
+  Pod::Usage
   CGI
-  DBI
-  Msql-Mysql-modules
+  DBI 1.06 or later
+  Msql-Mysql-modules-1.21_15 or later
+  Text::FillIn
   ePerl (for dbforms.cgi)
 
 Installation
@@ -27,60 +28,101 @@ Installation
   1) Ensure you have installed the prerequisites above.
 
   2)  perl Makefile.PL
+	Select each DBD driver you wish to test DbFramework against.
       make
-      make test (requires 2 Mysql databases: 'test, 'music')
+      make test
+	You will need permission to create the databases 'dbframework_test'
+	and 'dbframework_catalog' for each DBI driver you chose to test.
       make install
 
-HTML forms application
-----------------------
-Read the 'DATA MODEL RULES' section in the DataModel man page for
-important information on how to create your database schema.
+To use forms/dbforms.cgi, install it in a CGI directory then 'perldoc
+forms/dbforms.cgi'.
 
-Install forms/dbforms.cgi in a CGI directory.  Call it with
+DbFramework has been successfully built and tested on (at least) the
+following configurations:
 
-http://host/cgi_path/dbforms.cgi?db=foo
+	   RedHat Linux 5.1
+		Mysql 3.22.14-gamma
+		Msql 2.0.8
 
-where 'foo' is the name of a Mysql database.
-
-
-To do
-=====
-* Tue Jan 12, 1999
-  BUG - dbforms.cgi/Persistent.pm can't update columns in the pk e.g. where an
-        attribute in the pk is a fk
-  FEATURE - 'subforms'
-  FEATURE - arbitrary sql in templates
-
-* Fri Jan 8, 1999
-  BUG - >1 fk relating to the same pk table in a single table is not
-       handled by dbforms.cgi
-
-* Fri Jan  1 23:40:32 GMT 1999
-  Select and modify pane column order sometimes don't match
-  
-4/1/1999
-  - User-defined templates specify attributes to be used for foreign keys
-  - Allow relationships between the same table (in different roles).
-    Needs documenting
-
-* Make Bundle::DbFramework
-
-* Schema grammar
-  - might be better off using Jeeves (from the Panther book)
-  - should handle relationships of degree >2
-  - could be CDIF compliant
-
-* Attributes of relationships should be stored so that full schema
-  including attributes of relationships can be built from meta-data.
-
-* add support for UNIQUE columns (different to ordinary KEYs)
-
-* make primary key in grammar optional (1:1 relationships) 
-
-* make relationships optional in grammar
 
 History
 =======
+
+28-03-1999                  Paul Sharpe                  <paul@miraclefish.com>
+-------------------------------------------------------------------------------
+RELEASE 1.07
+
+Highlights
+==========
+  + Support for Msql (and potentially all DBI drivers.)
+  + Improved template support.
+
+= API
+  Attribute::
+    -- BUG FIXES
+	- as_html_form_field() was producing invalid HTML for date fields.
+    - as_html_heading() now takes $bgcolor argument.
+  Catalog.pm (NEW CLASS)
+  DataModel::
+    - new() now takes data source name to move away from dependence on Mysql.
+    - init_db_metadata() now needs to be called explicity (not called in
+      new()).
+    - New methods driver() and db().
+  DataType::ANSII:: (NEW CLASS)
+  DataType/Mysql:: (NEW CLASS)
+  ForeignKey::
+    -- BUG FIX
+       - as_html_form_field() was using pk attribute names to select
+         defaults in select field.  Should use fk attribute names.
+  Table::
+    - read_form now takes ($name,$path) arguments.
+    - get_dbh() now takes data source name to move away from dependence on
+      Mysql.
+  Persistent::
+    - New method init_pk()
+    - New method table_qualified_attribute_hashref()
+    - Removed method fill_template().  Templates now handled by Template.pm.
+    - select() now takes extra argument $order.
+  PrimaryKey::
+    - New method as_query_string()
+    - html_select_field() sets null value labels to the string 'NULL'.
+  Table::
+    -- BUG FIXES
+      - insert() should only try to insert values which are defined.
+      - Don't try to update columns where the value is undefined.
+      - as_html_heading() required more specific pattern match.
+      - Quoting in insert() and update() required type to correctly quote
+        numeric fields.
+      - new() was using wrong argument in belongs_to()
+
+    - new() now takes optional DataModel argument
+    - New method belongs_to()
+    - get_attribute_names renamed attribute_names()
+    - New method select_loh()
+    - @columns in select() and select_loh() can contain references to
+      database functions to be applied to the column.
+    - removed methods set_templates(), read_form() and fill_templates()
+      as template handling is now done in Template.pm
+    - as_html_heading() now adds one heading for each key attribute.
+    - insert() returns -1 for non auto increment columns.
+  Template:: (NEW CLASS)
+  Util::
+    - Removed get_db() as it was Mysql specific.  The database name can
+      be retrieved from DbFramework::DataModel::db
+    - New sub do_sql()
+    - get_dbh() now takes data source name to move away from
+      dependence on Mysql.
+
+= Makefile.PL configures drivers to test at 'make test' stage.
+
+= dbforms.cgi
+  - Now accepts DBI driver CGI parameter (default is Mysql.)
+
+= Overhaul of test scripts.
+
+
+12-1-1999                   Paul Sharpe                  <paul@miraclefish.com>
 -------------------------------------------------------------------------------
 RELEASE 1.06
 
@@ -96,6 +138,7 @@ RELEASE 1.06
     - New method as_html_heading()
   Table::
     - New method as_html_heading()
+
 
 6-1-1999                    Paul Sharpe                  <paul@miraclefish.com>
 -------------------------------------------------------------------------------
@@ -180,3 +223,35 @@ RELEASE 1.02
 -------------------------------------------------------------------------------
 RELEASE 1.01 (FIRST PUBLIC RELEASE)
 
+
+To do
+=====
+* Tue Jan 12, 1999
+  BUG - dbforms.cgi/Persistent.pm can't update columns in the pk e.g. where an
+        attribute in the pk is a fk
+
+* Fri Jan 8, 1999
+  BUG - >1 fk relating to the same pk table in a single table is not
+       handled by dbforms.cgi
+  
+4/1/1999
+  - User-defined templates specify attributes to be used for foreign keys
+    and ordering
+  - Allow relationships between the same table (in different roles).
+    Needs documenting
+
+* Make Bundle::DbFramework
+
+* Schema grammar
+  - might be better off using Jeeves (from the Panther book)
+  - should handle relationships of degree >2
+  - could be CDIF compliant
+
+* Attributes of relationships should be stored so that full schema
+  including attributes of relationships can be built from meta-data.
+
+* add support for UNIQUE columns (different to ordinary KEYs)
+
+* make primary key in grammar optional (1:1 relationships) 
+
+* make relationships optional in grammar

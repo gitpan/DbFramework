@@ -2,75 +2,79 @@
 # `make test'. After `make install' it should work as `perl test.pl'
 use strict;
 use Test;
+use t::Config;
 
-BEGIN { plan tests => 15}
+BEGIN { plan tests => scalar(@t::Config::drivers) * 12 }
 
+require 't/util.pl';
 use DbFramework::Persistent;
+use DbFramework::DataModel;
 use DbFramework::Table;
 use DbFramework::Util;
 
-package Song;
+package Foo;
 use base qw(DbFramework::Persistent);
 
 package main;
-my $db   = 'music';
-my $dbh  = DbFramework::Util::get_dbh($db);
-my $song = new Song('song',$dbh);
-ok(1);
 
-# init
-$song->table->delete;
-ok(1);
+for ( @t::Config::drivers ) { foo($_) }
 
-# insert
-$song->attributes_h(['song_id',0,'song_name','Pigbag']);
-ok($song->insert,1);
-my %song = ( song_id => 0, song_name => 'Donna Lee' );
-$song->attributes_h([ %song ]);
-my $pk = $song->insert;
-ok($pk,2);
-my @a = $song->attributes_h_byname('song_id','song_name');
-ok($a[1],$song{song_name});
+sub foo($) {
+  my($driver) = @_;
 
-# update
-$song->attributes_h(['song_id',$pk,'song_name','Portrait Of Tracy']);
-ok($song->update,1);
+  my $db  = 'dbframework_test';
+  my $dsn = "DBI:$driver:database=$db";
+  my $dm  = new DbFramework::DataModel($db,$dsn);
+  $dm->init_db_metadata;
+  my $dbh = $dm->dbh; $dbh->{PrintError} = 0;
+  my $foo = new Foo($dm->collects_table_h_byname('foo'),$dbh);
+  ok(1);
 
-# select
-$song->attributes_h([]);
-my @songs = $song->select;
-@a = $songs[0]->attributes_h_byname('song_id','song_name');
-ok("@a",'1 Pigbag');
-@a = $songs[1]->attributes_h_byname('song_id','song_name');
-ok("@a",'2 Portrait Of Tracy');
+  # init
+  $foo->table->delete;
+  ok(1);
 
-@songs = $song->select(q{song_name like 'P%'});
-ok(@songs,2);
-@songs = $song->select(q{song_id = 2});
-ok(@songs,1);
-@a = $songs[0]->attributes_h_byname('song_id','song_name');
-ok("@a",'2 Portrait Of Tracy');
+  # insert
+  $foo->attributes_h(['foo',0,'bar','bar']);
+  my $pk = ($driver eq 'mSQL') ? -1 : 1;
+  ok($foo->insert,$pk);
+  my %foo = ( foo => 0, bar => 'baz' );
+  $foo->attributes_h([ %foo ]);
+  $pk = ($driver eq 'mSQL') ? -1 : 2;
+  ok($foo->insert,$pk);
+  my @foo = $foo->attributes_h_byname('foo','bar');
+  ok($foo[1],$foo{bar});
 
-# delete
-ok($songs[0]->delete,1);
+  # update
+  $pk = ($driver eq 'mSQL') ? 0 : 2;
+  $foo->attributes_h(['foo',$pk,'bar','baz','baz','baz']);
+  my $rows = ($driver eq 'mSQL') ? -1 : 1;
+  ok($foo->update,$rows);
 
-# make persistent (sub)class
-my($class,$table) = ('Composition','composition');
-my $ok = qq{package $class;
+  # select
+  $foo->attributes_h([]);
+  @foo = $foo->select(undef,'bar');
+  my @a   = $foo[0]->attributes_h_byname('foo','bar');
+  $pk = ($driver eq 'mSQL') ? 0 : 1;
+  ok("@a","$pk bar");
+  @a  = $foo[1]->attributes_h_byname('foo','bar');
+  $pk = ($driver eq 'mSQL') ? 0 : 2;
+  ok("@a","$pk baz");
+  @foo = $foo->select(q{bar like 'b%'});
+  ok(@foo,2);
+
+  # delete
+  $rows = ($driver eq 'mSQL') ? -1 : 1;
+  ok($foo[0]->delete,$rows);
+
+  # make persistent (sub)class
+  my($class,$table) = ('Bar','bar');
+  my $ok = qq{package $class;
 use strict;
 use base qw(DbFramework::Persistent);
 };
-ok(DbFramework::Persistent->make_class($class),$ok);
-eval $ok;
-my $composition = new Composition('composition',$dbh);
-ok($composition->table->name,$table);
-
-# html form
-%song = ( song_id => 0, song_name => 'Donna Lee' );
-$song->attributes_h([ %song ]);
-$ok = qq{<TR><TD><STRONG>song_id</STRONG></TD><TD><INPUT NAME="song_id" VALUE="0" SIZE=10 TYPE="text"></TD></TR>
-<TR><TD><STRONG>song_name</STRONG></TD><TD><INPUT NAME="song_name" VALUE="Donna Lee" SIZE=30 TYPE="text" MAXLENGTH=127></TD></TR>
-};
-ok($song->as_html_form,$ok);
-
-$dbh->disconnect;
+  ok(DbFramework::Persistent->make_class($class),$ok);
+  eval $ok;
+  my $bar = $class->new($dm->collects_table_h_byname($table),$dbh);
+  ok($bar->table->name,$table);
+}

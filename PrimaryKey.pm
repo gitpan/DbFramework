@@ -9,6 +9,7 @@ DbFramework::PrimaryKey - Primary key class
   $sql  = $pk->as_sql;
   $html = $pk->html_pk_select_field(\@column_names,$multiple,\@default);
   $html = $pk->as_html_heading;
+  $qw   = $pk->as_query_string(\%values);
 
 =head1 DESCRIPTION
 
@@ -27,6 +28,7 @@ use base qw(DbFramework::Key);
 use Alias;
 use vars qw( $NAME $BELONGS_TO @INCORPORATES_L $BGCOLOR $_DEBUG );
 use CGI;
+use URI::Escape;
 
 # CLASS DATA
 
@@ -85,21 +87,21 @@ Returns an HTML form select field where the value consists of the
 values from the columns which make up the primary key and the labels
 consist of the corresponding values from I<@column_names>.  If
 I<@column_names> is undefined the labels consist of the values from
-all column names. If I<$multiple> is defined the field will allow
+all column names.  If I<$multiple> is defined the field will allow
 multiple selections.  I<@default> is a list of values in the select
 field which should be selected by default.  For fields which allow
 only a single selection the first value in I<@default> will be used as
 the default.  If I<$name> is defined it will be used as the name of
 the select field, otherwise the name will consist of the attribute
-names of the primary key joined by ',' (comma).  B<This method cannot
-handle primary keys which consist of more than one attribute.>
+names of the primary key joined by ',' (comma) and the values will
+consist of the corresponding attribute values joined by ',' (comma).
 
 =cut
 
 sub html_select_field {
   my $self = attr shift;
 
-  my @labels     = $_[0] ? @{$_[0]} : $BELONGS_TO->get_attribute_names;
+  my @labels     = $_[0] ? @{$_[0]} : $BELONGS_TO->attribute_names;
   my $multiple   = $_[1];
   # this is hard-coded for single-attribute primary keys
   my $default    = $multiple ? $_[2] : $_[2]->[0];
@@ -113,11 +115,17 @@ sub html_select_field {
   my $i = 0;
   $pk_values[$i] = ''; $labels{''} = 'Any'; $i++;
   for ( $BELONGS_TO->select(\@columns,undef,join(',',@labels)) ) {
-    @row   = @{$_};
-    my $pk = join(',',@row[0..$#pk_columns]);                # pk fields
+    @row = @{$_};
+    my $pk = join(',',@row[0..$#pk_columns]); # pk fields
     $pk_values[$i++] = $pk;
-    $labels{$pk} = join(',',@row[$#pk_columns+1..$#row]);    # label fields
+
+    # label fields
+    for ( @row[$#pk_columns+1..$#row] ) {
+      $labels{$pk} .= ',' if defined($labels{$pk});
+      $labels{$pk} .= defined($_) ? $_ : 'NULL';
+    }
   }
+
   $name = $pk unless $name;
 
   my $html;
@@ -205,6 +213,27 @@ sub as_html_heading {
   "$html</TD>";
 }
 
+#-----------------------------------------------------------------------------
+
+=head2 as_query_string(\%values)
+
+Returns a CGI query string consisting of attribute names from the
+primary key and their corresponding values from I<%values>.
+
+=cut
+
+sub as_query_string {
+  my $self = attr shift;
+  my %values = $_[0] ? %{$_[0]} : ();
+  my $qs;
+  for ( $self->attribute_names ) {
+    my $value = $values{$_} ? $values{$?} : '';
+    $qs .= "$_=$value&";
+  }
+  chop($qs);
+  uri_escape($qs);
+}
+
 1;
 
 =head1 SEE ALSO
@@ -217,7 +246,7 @@ Paul Sharpe E<lt>paul@miraclefish.comE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (c) 1997,1998 Paul Sharpe. England.  All rights reserved.
+Copyright (c) 1997,1998,1999 Paul Sharpe. England.  All rights reserved.
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
 

@@ -1,45 +1,119 @@
-#!/usr/local/bin/eperl -mc
+#!/usr/local/bin/eperl -I../.. -mc
 <?
+=pod
+
+=head1 NAME
+
+dbforms.cgi - Forms interface to DbFramework databases
+
+=head1 SYNOPSIS
+
+  http://foo/cgi_bin/dbforms.cgi?driver=mysql&db=foo
+
+=head1 DESCRIPTION
+
+B<dbforms.cgi> is a CGI script which presents a simple HTML forms
+interface to any database configured to work with B<DbFramework>.  Any
+database you wish to work with B<must> have the appropriate catalog
+entries in the catalog database before it will work with this script
+(see L<DbFramework::Catalog/"The Catalog">.)
+
+=head2 Query string arguments
+
+The following arguments are supported in the query string.
+
+=over 4
+
+=item host
+
+The host on which the database is located (default = 'localhost'.)
+
+=item driver
+
+The name of the DBI driver to use to connect to the database i.e. the
+bit after B<DBD::> (default = 'mysql'.)
+
+=item db
+
+The name of the database to work with.
+
+=back
+
+=head1 SEE ALSO
+
+L<DbFramework::Catalog>.
+
+=head1 AUTHOR
+
+Paul Sharpe E<lt>paul@miraclefish.comE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (c) 1999 Paul Sharpe. England.  All rights reserved.  This
+program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=cut
+
   use lib '../..';
   use DbFramework::Util;
   use DbFramework::Persistent;
   use DbFramework::DataModel;
+  use DbFramework::Template;
   use CGI qw/:standard/;
   use URI::Escape;
 
   $cgi    = new CGI;
   $db     = $cgi->param('db')      || die "No database specified";
+  $driver = $cgi->param('driver')  || 'mysql';
   $host   = $cgi->param('host')    || undef;
-  $form   = $cgi->param('form')    || undef;
+  $form   = $cgi->param('form')    || 'input';
   $action = $cgi->param('action')  || 'select';
-  $dbh    = DbFramework::Util::get_dbh($db,$host);
-  $dm     = new DbFramework::DataModel($db,$db,$host);
+  $dm     = new DbFramework::DataModel($db,"DBI:$driver:database=$db;host=$host");
   $dm->dbh->{PrintError} = 0;  # ePerl chokes on STDERR
+  $dbh = $dm->dbh; $dbh->{PrintError} = 0;
+  $dm->init_db_metadata;
+
   @tables = @{$dm->collects_table_l};
   $class  = $table = $cgi->param('table') || $tables[0]->name;
+  $template = new DbFramework::Template(undef,\@tables);
+  $template->default($table);
 
   $code   = DbFramework::Persistent->make_class($class);
   eval $code;
 
   package main;
-  ($t)    = $dm->collects_table_h_byname($table);
+  ($t)   = $dm->collects_table_h_byname($table);
   $thing = new $class($t,$dbh);
   cgi_set_attributes($thing);
 
-  $thing->table->read_form($form) if $form; # configure templates
-  #eval { $thing->table->template("$table.html") };
+#  unless ( $form eq 'input' ) {
+#    $thing->init_pk;
+#    $thing->table->read_form($form);
+#  }
 
+  # unpack composite column name parameters
+  for my $param ( $cgi->param ) {
+    if ( $param =~ /,/ ) {
+      my @columns = split /,/,$param;
+      my @values  = split /,/,$cgi->param($param);
+      for ( my $i = 0; $i <= $#columns; $i++ ) {
+	$cgi->param($columns[$i],$values[$i]);
+      }
+    }
+  }
   sub cgi_set_attributes {
     my $thing = shift;
-    my @names = $thing->table->get_attribute_names;
     my %attributes;
-    for ( @names ) { $attributes{$_} = $cgi->param($_) }
+    for ( $thing->table->attribute_names ) {
+      $attributes{$_} = $cgi->param($_)
+    }
     $thing->attributes_h([%attributes]);
+  }
 
   sub error {
     my $message = shift;
     print  "<font color=#ff0000><strong>ERROR!</strong><p>$message</font>\n";
-  }
   }
 !>
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
@@ -51,7 +125,7 @@
   <body>
   <table border=1>
     <tr>
-      <td>
+      <td valign=top>
       <table>
         <tr>
           <td valign=top>
@@ -65,22 +139,7 @@
 <?
   for ( @{$dm->collects_table_l} ) {
     my $table = $_->name;
-    print "<li><a href=",$cgi->url,"?db=$db&host=$host&table=$table>$table</a>\n";
-  }
-!>
-            </ul>
-          </td>
-        </tr>
-        <tr>
-          <td>
-            <h4>Forms</h4>
-            <ul>
-<?
-  for ( @{$dm->collects_table_l} ) {
-    my $table = $_->name;
-    for my $form ( keys(%{$_->form_h}) ) {
-      print "<li><a href=",$cgi->url,"?db=$db&host=$host&table=$table&form=$form>$form</a>\n";
-    }
+    print "<li><a href=",$cgi->url,"?driver=$driver&db=$db&host=$host&table=$table>$table</a>\n";
   }
 !>
             </ul>
@@ -97,18 +156,21 @@
         </tr>
         <tr>
           <td>
+<? if ( $form eq 'input' ) { _!>
             <form method=post action=<? print $cgi->self_url !>>
-            <input type=hidden name=host value=<?=$host!>>
-            <input type=hidden name=db value=<?=$db!>>
-            <input type=hidden name=table value=<?=$table!>>
-            <input type=hidden name=form value=<?=$form!>>
-            <?print $thing->table->as_html_heading;!>
+<?
+	    for ( qw(host driver db table form) ) {
+	      print "<input type=hidden name=$_ value=",$$_,">\n";
+	    }
+            print $thing->table->as_html_heading;
+!>
             <tr>
-              <?print $thing->fill_template('input');!>
+	      <?print $template->fill($thing->table_qualified_attribute_hashref)!>
               <td><input type=radio name=action value=select <?print 'checked' if $action eq 'select'!>> select</td>
               <td><input type=radio name=action value=insert <?print 'checked' if $action eq 'insert'!>> insert</td>
               <td><input type=submit value="Submit"></td>
              </form>
+<? } !>
             </tr>
           </td>
         </tr>
@@ -119,7 +181,7 @@ my $action = $cgi->param('action') || '';
 SWITCH: {
   $action eq 'select' &&
     do { 
-      my @names = $thing->table->get_attribute_names;
+      my @names = $thing->table->attribute_names;
       my $conditions;
       for ( @names ) {
 	if ( $cgi->param($_) ) {
@@ -146,35 +208,13 @@ SWITCH: {
 	    # fill template
 	    my $values_hashref = $thing->attributes_h;
 	    
-	    $DEBUG  = 0;
-	    print STDERR $thing->table->template_h_byname('input') if $DEBUG;
-	    my $template = $thing->fill_template('input',$values_hashref);
-
-=pod
-	    for ( @{$thing->table->has_foreign_keys_l} ) {
-	      my @fk_attributes = $_->attribute_names;
-	      # can only handle single attribute fks
-	      my($fk_value) = $thing->attributes_h_byname($fk_attributes[0]);
-	      my $pk    = $_->references;
-	      my $table = $pk->belongs_to;
-	      my $class = $table->name;
-	      my $code  = DbFramework::Persistent->make_class($class);
-	      eval $code;
-	      package main;
-	      my $thing = new $class($table,$dbh);
-	      my @pk_attributes = $pk->attribute_names;
-	      # initialise thing based on fk value
-	      ($thing) = $thing->select("$pk_attributes[0] = $fk_value");
-	      $thing->table->template_h(['input',$template]);
-	      $template = $thing->fill_template('input',$values_hashref);
-	    }
-=cut
-
+	    $DEBUG = 0;
+	    print STDERR $thing->table->template_h_byname($form) if $DEBUG;
 	    print "<form method=post action=",$cgi->self_url,">\n";
-	    for ( qw(host db table form) ) {
+	    for ( qw(host driver db table form) ) {
 	      print "<input type=hidden name=$_ value=",$$_,">\n";
 	    }
-	    print "<TR>$template";
+	    print "<TR>",$template->fill($thing->table_qualified_attribute_hashref),"\n";
 	    print "<td><input type=radio name=action value=update",($action eq 'select') ? ' checked>' : '',"update</td>\n";
 	    print "<td><input type=radio name=action value=delete>",($action eq 'delete') ? ' checked' : '',"delete</td>\n";
 	    print "<td><input type=submit value='Submit'></td></tr></form>\n";

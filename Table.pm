@@ -6,14 +6,15 @@ DbFramework::Table - Table class
 
   use DbFramework::Table;
 
-  $t = new DbFramework::Table($name,,,$dbh,\@forms);
+  $t    = new DbFramework::Table new($name,\@attributes,$pk,$dbh,$dm);
   $t->init_db_metadata;
-  $dbh = $t->dbh($dbh);
+  $dbh  = $t->dbh($dbh);
   $pk   = $t->is_identified_by($pk);
   @fks  = @{$t->has_foreign_keys_l};
+  %fks  = %{$t->has_foreign_keys_h};
   @keys = @{$t->is_accessed_using_l};
   @a    = $t->get_attributes(@names);
-  @n    = $t->get_attribute_names;
+  @n    = $t->attribute_names;
   $html = $t->as_html_form;
   $s    = $t->as_string;
   $sql  = $t->as_sql;
@@ -21,42 +22,17 @@ DbFramework::Table - Table class
   $pk   = $t->insert(\%values);
   $rows = $t->update(\%values,$conditions);
   @lol  = $t->select(\@columns,$conditions,$order);
-  $tmpl = $t->set_templates(\%templates);
-  $fill = $t->fill_template($template);
+  @loh  = $t->select_loh(\@columns,$conditions,$order);
+  @a    = $t->non_key_attributes;
+  $dm   = $t->belongs_to;
   do_something if $t->in_foreign_key($attribute);
   do_something if $t->in_key($attribute);
   do_something if $t->in_primary_key($attribute);
   do_something if $t->in_any_key($attribute);
-  @a = $t->non_key_attributes;
-  $t->read_form($form,$dir);
 
 =head1 DESCRIPTION
 
 A B<DbFramework::Table> object represents a database table (entity).
-
-=head2 Forms and Templates
-
-A table can have a number of associated forms.  Each form defines a
-number of templates which can be used for data entry or display.
-Forms associated with a table can be configured when calling new()
-and/or by including the Perl code
-
-C<$self-E<gt>form_h([form =E<gt> 'formfile' ...]);>
-
-in the file F</usr/local/etc/dbframework/forms/$db/$table/config.pl>.
-B<form> is a name used to identify the form and B<formfile> is the
-name of the file containing the form definition.
-
-Form files should be place in
-F</usr/local/etc/dbframework/forms/$db/$table>.  They should contain a
-list of (B<template name>,B<template>) pairs, where B<template name>
-is a name used to identify the template and B<template> is an HTML
-template.  Templates can be initialised by reading form files with the
-read_form() method.  The special tags which can be used in a template
-are described in the fill_template() method.
-
-All lines in F<config.pl> and I<formfile> matching the regular
-expression B</^\s*#/> will be treated as comments and ignored.
 
 =head1 SUPERCLASSES
 
@@ -69,11 +45,14 @@ B<DbFramework::DataModelObject>
 package DbFramework::Table;
 use strict;
 use vars qw( $NAME @CONTAINS_L $IS_IDENTIFIED_BY $_DEBUG @IS_ACCESSED_USING_L
-	     @HAS_FOREIGN_KEYS_L $DBH %TEMPLATE_H @CGI_PK %FORM_H );
+	     @HAS_FOREIGN_KEYS_L $DBH %TEMPLATE_H @CGI_PK %FORM_H
+	     $BELONGS_TO );
 use base qw(DbFramework::DefinitionObject DbFramework::DataModelObject);
 use DbFramework::PrimaryKey;
-use DbFramework::DataType;
+use DbFramework::DataType::ANSII;
+use DbFramework::DataType::Mysql;
 use DbFramework::Attribute;
+use DbFramework::Catalog;
 use Alias;
 use Carp;
 use CGI;
@@ -88,6 +67,8 @@ my %fields = (
 	      HAS_FOREIGN_KEYS_H  => undef,
 	      # Table 1:1 IsAccessedUsing 0:N Key
 	      IS_ACCESSED_USING_L => undef,
+	      # Table 1:1 BelongsTo 1:1 DataModel
+	      BELONGS_TO          => undef,
 	      DBH                 => undef,
 	      TEMPLATE_H          => undef,
 	      FORM_H              => undef,
@@ -100,17 +81,15 @@ my $formsdir = '/usr/local/etc/dbframework/forms';
 
 =head1 CLASS METHODS
 
-=head2 new($name,\@attributes,$primary,$dbh,\@forms)
+=head2 new($name,\@attributes,$pk,$dbh,$dm)
 
 Create a new B<DbFramework::Table> object.  I<$dbh> is a DBI database
-handle which refers to a database containing a table named I<$table>.
+handle which refers to a database containing a table named I<$name>.
 I<@attribues> is a list of B<DbFramework::Attribute> objects.
 I<$primary> is a B<DbFramework::PrimaryKey> object.  I<@attributes>
 and I<$primary> can be omitted if you plan to use the
-B<init_db_metadata()> object method (see below).  I<@forms> is a list
-of (I<form name>,I<file>) pairs.  Form files should contain a list of
-(I<template name>,I<template>) pairs. (see the object method
-read_form() below.)
+B<init_db_metadata()> object method (see below).  I<$dm> is a
+B<DbFramework::DataModel> object to which this table belongs.
 
 =cut
 
@@ -124,14 +103,7 @@ sub new {
   @{$self}{keys %fields} = values %fields;
   $self->is_identified_by(shift);
   $self->dbh(shift);
-  attr $self;
-  my $config = "$formsdir/" . $self->get_db($DBH) . "/$NAME/config.pl";
-  # table configuration
-  if ( -f $config ) {
-    my $code = _readfile_no_comments($config,"Couldn't open form config");
-    eval $code;
-  }
-  $self->form_h($_[0]) if $_[0];
+  $self->belongs_to(shift);
   return $self;
 }
 
@@ -146,7 +118,7 @@ I<HAS_FOREIGN_KEYS_L> and I<HAS_FOREIGN_KEYS_H> attributes.  B<Note>
 that foreign key objects will not be created automatically by calling
 init_db_metadata() on a table object.  If you want to automatically
 create foreign key objects for your tables you should use call
-init_db_metadata() on a data model object (see
+init_db_metadata() on a B<DbFramework::DataModel> object (see
 L<DbFramework::Datamodel/init_db_metadata()>).  Other keys (indexes)
 defined for a table can be accessed using the I<IS_ACCESSED_USING_L>
 attribute.  See L<DbFramework::Util/AUTOLOAD()> for the accessor
@@ -154,21 +126,27 @@ methods for these attributes.
 
 =head2 is_identified_by($primary)
 
-I<$primary> is a B<DbFramework::PrimaryKey> object.  If supplied, sets
+I<$primary> is a B<DbFramework::PrimaryKey> object.  If supplied sets
 the table's primary key to I<$primary>.  Returns a
 B<DbFramework::PrimaryKey> object with is the table's primary key.
+
+=head2 dbh($dbh)
+
+I<$dbh> is a DBI database handle.  If supplied sets the database
+handle associated with the table.  Returns the database handle
+associated with the table.
+
+=head2 belongs_to($dm)
+
+I<$dm> is a B<DbFramework::DataModel> object.  If supplied sets the
+data model to which the table belongs.  Returns the data model to
+which the table belongs.
 
 =head2 get_attributes(@names)
 
 Returns a list of B<DbFramework::Attribute> objects.  I<@names> is a
-list of attribute names to return.  If I<@names> is undefined, all
+list of attribute names to return.  If I<@names> is undefined all
 attributes associated with the table are returned.
-
-=head2 dbh($dbh)
-
-I<$dbh> is a DBI database handle.  If supplied, sets the database
-handle associated with the table.  Returns the database handle
-associated with the table.
 
 =cut
 
@@ -181,13 +159,13 @@ sub get_attributes {
 
 ##-----------------------------------------------------------------------------
 
-=head2 get_attribute_names()
+=head2 attribute_names()
 
 Returns a list of attribute names for the table.
 
 =cut
 
-sub get_attribute_names {
+sub attribute_names {
   my $self = attr shift;
   my @names;
   for ( @CONTAINS_L ) { push(@names,$_->name) }
@@ -317,7 +295,7 @@ sub non_key_attributes {
 
 =head2 as_string()
 
-Return table details as a string.
+Returns table details as a string.
 
 =cut
 
@@ -341,21 +319,54 @@ sub init_db_metadata {
   my $self  = attr shift;
 
   my($sql,$sth,$rows,$rv);
-  $sql   = qq{DESCRIBE $NAME};
+  # query to get typeinfo
+  if ( ! defined($self->belongs_to) || $self->belongs_to->driver eq 'mSQL' ) {
+    $sql   = qq{SELECT * FROM $NAME};
+  } else {
+    # more efficient query for getting typeinfo but not supported by mSQL
+    $sql   = qq{SELECT * FROM $NAME WHERE 1 = 0};
+  }
   $sth   = $DBH->prepare($sql) || die($DBH->errstr);
   $rv    = $sth->execute       || die($sth->errstr);
-  $rows  = $sth->rows;
+  
+  my %datatypes = ( mysql => 'Mysql' ); # driver-specific datatype classes
   my @columns;
-  for ( my $i = 1; $i <= $rows; $i++ ) {
-    my %row = %{$sth->fetchrow_hashref};
+  for ( my $i = 0; $i < $sth->{NUM_OF_FIELDS}; $i++ ) {
+
+    my $class = ( defined($self->belongs_to) && 
+		  exists($datatypes{$self->belongs_to->driver}) 
+		)
+      ? $datatypes{$self->belongs_to->driver}
+      : 'ANSII';
     
-    my $d = new DbFramework::DataType($row{Type} =~ /^(\w+)\(*.*$/,
-                                      $row{Type} =~ /^\w+\((\d+)\)$/,
-                                      $row{Extra}
-                                     );
-    my $a = new DbFramework::Attribute($row{Field},
-                                       $row{Default},
-                                       $row{Null} eq 'YES' ? 1 : 0,
+    my $name = $sth->{NAME}->[$i];
+  # if driver-specific class exists, get the driver-specific type
+    my($type,$default,$extra);
+  SWITCH: for ( $class ) {
+    /Mysql/ && do {
+      print STDERR "mysql_type = ",join(',',@{$sth->{mysql_type}}),"\n"
+	if $_DEBUG;
+      $type = $sth->{mysql_type}->[$i];
+      my $sth = DbFramework::Util::do_sql($DBH,"DESCRIBE $NAME $name");
+      my $metadata = $sth->fetchrow_hashref;
+      ($default,$extra) = ($metadata->{Default},uc($metadata->{Extra}));
+      $sth->finish;
+      last SWITCH;
+    };
+    /ANSII/ && do {
+      $type = $sth->{TYPE}->[$i];
+      last SWITCH;
+    };
+  }
+    $class = "DbFramework::DataType::$class";
+    my $d = $class->new($DBH,
+			$type,
+			$sth->{PRECISION}->[$i],
+			$extra,
+		       );
+    my $a = new DbFramework::Attribute($sth->{NAME}->[$i],
+                                       $default,
+                                       $sth->{NULLABLE}->[$i],
                                        $d
                                       );
     push(@columns,$a);
@@ -363,30 +374,11 @@ sub init_db_metadata {
   $self->_init(\@columns);
 
   ## add keys
-  my(%keys,$key,@row,@keys);
-  $sql = qq{SHOW KEYS FROM $NAME};
-  $sth = $DBH->prepare($sql) || die($DBH->errstr);
-  $rv  = $sth->execute       || die($sth->errstr);
-  while ( @row = $sth->fetchrow_array ) {
-    push(@{$keys{$row[2]}},$row[4]);
-  }
+  my $c = new DbFramework::Catalog("DBI:mysql:database=$DbFramework::Catalog::db");
+  $c->set_primary_key($self);
+  $c->set_keys($self);
 
-  for ( keys(%keys) ) {
-    my @attributes = $self->get_attributes(@{$keys{$_}});
-    if ( $_ eq 'PRIMARY' ) {    # primary key
-      my $pk = new DbFramework::PrimaryKey(\@attributes);
-      $pk->belongs_to($self);   # reverse reference
-      $self->is_identified_by($pk);
-    } elsif ( $_ !~ /^f_/i ) {  # key (not foreign)
-      my $k = new DbFramework::Key($_,\@attributes);
-      $k->belongs_to($self);    # reverse reference
-      push(@keys,$k);
-    }
-  }
-  $self->is_accessed_using_l(\@keys);
-  die "no primary key defined in $NAME" unless defined($IS_IDENTIFIED_BY);
-
-  $self->_templates;  # set default templates
+  #$self->_templates;  # set default templates
 
   return $self;
 }
@@ -443,9 +435,9 @@ sub validate_foreign_keys {
 
 =head2 delete($conditions)
 
-B<DELETE> rows B<FROM> the table associated with this object B<WHERE>
-the conditions in I<$conditions> are met.  Returns the number of rows
-deleted.
+DELETE rows FROM the table associated with this object WHERE the
+conditions in I<$conditions> are met.  Returns the number of rows
+deleted if supplied by the DBI driver.
 
 =cut
 
@@ -461,10 +453,10 @@ sub delete {
 
 =head2 insert(\%values)
 
-B<INSERT INTO> the table columns corresponding to the keys of
-I<%values> the B<VALUES> corresponding to the values I<%values>.
-Returns the primary key of the inserted row if it is a Mysql
-'AUTO_INCREMENT' column.
+INSERT INTO the table columns corresponding to the keys of I<%values>
+the VALUES corresponding to the values of I<%values>.  Returns the
+primary key of the inserted row if it is a Mysql 'AUTO_INCREMENT'
+column or -1.
 
 =cut
 
@@ -472,26 +464,38 @@ sub insert {
   my $self   = attr shift;
   my %values = %{$_[0]};
 
-  my $columns = '(' . join(',',keys(%values)). ')';
-  my $values;
-  for ( values(%values) ) { $values .= $DBH->quote($_) . ',' }
+  my(@columns,$values);
+  for ( keys(%values) ) {
+    next unless defined($values{$_});
+    push(@columns,$_);
+    my $type = $self->get_attributes($_)->references->type;
+    print STDERR "value = $values{$_}, type = $type\n" if $_DEBUG;
+    $values .= $DBH->quote($values{$_},$type) . ',';
+  }
   chop $values;
+  my $columns = '(' . join(',',@columns). ')';
 
   my $sql = "INSERT INTO $NAME $columns VALUES ($values)";
   print STDERR "$sql\n" if $_DEBUG;
+
   my $sth = $DBH->prepare($sql) || die $DBH->errstr;
   my $rv  = $sth->execute       || die "$sql\n" . $sth->errstr . "\n";
   my $rc  = $sth->finish;
 
-  return $sth->{'insertid'}; # id of auto_increment field (DBD::mysql specific)
+  if ( $self->belongs_to->driver eq 'mysql' ) {
+    # id of auto_increment field
+    return $sth->{mysql_insertid};
+  } else {
+    return -1;
+  }
 }
 #------------------------------------------------------------------------------
 
 =head2 update(\%values,$conditions)
 
-B<UPDATE> the table B<SET>ting the columns matching the keys in
-%values to the values in %values B<WHERE> I<$conditions> are
-met. Returns the number of rows updated.
+UPDATE the table SETting the columns matching the keys in %values to
+the values in %values WHERE I<$conditions> are met.  Returns the
+number of rows updated if supplied by the DBI driver.
 
 =cut
 
@@ -501,7 +505,11 @@ sub update {
   my $conditions = $_[1];
 
   my $values;
-  for ( keys %values ) { $values .= "$_ = " . $DBH->quote($values{$_}) . ',' }
+  for ( keys %values ) {
+    next unless $values{$_};
+    my $type = $self->get_attributes($_)->references->type;
+    $values .= "$_ = " . $DBH->quote($values{$_},$type) . ',';
+  }
   chop $values;
   
   my $sql  = "UPDATE $NAME SET $values";
@@ -514,21 +522,18 @@ sub update {
 
 =head2 select(\@columns,$conditions,$order)
 
-Returns a list of lists of values by B<SELECT>ing rows B<FROM> the
-table B<WHERE> I<$conditions> are met B<ORDER>ed B<BY> I<$order>.
+Returns a list of lists of values by SELECTing values FROM I<@columns>
+WHERE rows meet I<$conditions> ORDERed BY the list of columns in
+I<$order>.  Strings in I<@columns> can refer to functions supported by
+the database in a SELECT clause e.g.
+
+C<@columns = q/sin(foo),cos(bar),tan(baz)/;>
 
 =cut
 
 sub select {
   my $self = attr shift;
-  my @columns = defined($_[0]) ? @{$_[0]} : @{$self->get_attribute_names};
-  my($conditions,$order) = @_[1..2];
-  my $sql        = "SELECT " . join(',',@columns) . " FROM $NAME";
-     $sql       .= " WHERE $conditions" if $conditions;
-     $sql       .= " ORDER BY $order"   if $order;
-  print STDERR "$sql\n" if $_DEBUG;
-  my $sth        = $DBH->prepare($sql) || die($DBH->errstr);
-  my $rv         = $sth->execute       || die "$sql\n" . $sth->errstr . "\n";
+  my $sth  = $self->_do_select(@_);
   my @things;
   # WARNING!
   # Can't use fetchrow_arrayref here as it returns the *same* ref (man DBI)
@@ -542,76 +547,156 @@ sub select {
   }
   return @things;
 }
-##-----------------------------------------------------------------------------
 
-=head2 fill_template($name,\%values)
+#------------------------------------------------------------------------------
 
-Return the filled HTML template named I<$name>.  A template can
-contain special placeholders representing columns in a database table.
-Placeholders in I<$template> can take the following forms:
+=head2 select_loh(\@columns,$conditions,$order)
 
-=over 4
+Returns a list of hashrefs containing B<(column_name,value)> pairs by
+SELECTing values FROM I<@columns> WHERE rows meet I<$conditions>
+ORDERed BY the list of columns in I<$order>.  Strings in I<@columns>
+can refer to functions supported by the database in a SELECT clause
+e.g.
 
-=item B<E<lt>DbField table.columnE<gt>>
+C<@columns = q/sin(foo),cos(bar),tan(baz)/;>
 
-=item B<E<lt>DbField table.column value=valueE<gt>>
+The keys in the hashrefs will match the name of the function applied
+to the column i.e.
 
-=item B<E<lt>DbField table.column value=value type=typeE<gt>>
+C<@loh = $foo-E<gt>select(\@columns);>
 
-=back
-
-If the table's name() matches I<table> in a B<DbField> placeholder,
-the placeholder will be replaced with the corresponding HTML form
-field for the column named I<column> with arguments I<value> and
-I<type> (see L<DbFramework::Attribute/html_form_field()>).  If
-I<%values> is supplied placeholders will have the values in I<%values>
-added where a key in I<%values> matches a column name in the table.
-
-=over 4
-
-=item B<E<lt>DbFKey table.fk_name[,column...]E<gt>>
-
-=back
-
-If the table's name() matches I<table> in a B<DbFKey> placeholder, the
-placeholder will be replaced with the a selection box containing
-values and labels from the primary key columns in the related table.
-Primary key attribute values in I<%values> will be used to select the
-default item in the selection box.
-
-=over 4
-
-=item B<E<lt>DbValue table.column[,column...]E<gt>>
-
-=back
-
-If the table's name() matches I<table> in a B<DbValue> placeholder,
-the placeholder will be replaced with the values in I<%values> where a
-key in I<%values> matches a column name in the table.
+C<print "sin(foo) = $loh[0]-E<gt>{sin(foo)}\n";>
 
 =cut
+
+sub select_loh {
+  my $self = attr shift;
+  my $sth  = $self->_do_select(@_);
+  my @things;
+  while ( $_ = $sth->fetchrow_hashref ) {
+    # fetchrow_hashref may not return a fresh hashref in future (man DBI)
+    my %hash = %{$_};
+    push(@things,\%hash);
+  }
+  return @things;
+}
+
+#------------------------------------------------------------------------------
+
+# select(\@columns,$conditions,$order)
+# returns a statement handle for a SELECT
+
+sub _do_select {
+  my $self = attr shift;
+  my($columns_ref,$conditions,$order,$function_ref) = @_;
+  my @columns = defined($columns_ref) ? @$columns_ref : $self->attribute_names;
+  my $sql        = "SELECT " . join(',',@columns) . " FROM $NAME";
+     $sql       .= " WHERE $conditions" if $conditions;
+     $sql       .= " ORDER BY $order"   if $order;
+  print STDERR "$sql\n" if $_DEBUG;
+  my $sth = $DBH->prepare($sql) || die($DBH->errstr);
+  my $rv  = $sth->execute       || die "$sql\n" . $sth->errstr . "\n";
+  return $sth;
+}
+
+#------------------------------------------------------------------------------
+
+#=head2 fill_template($name,\%values)
+
+#Return the filled HTML template named I<$name>.  A template can
+#contain special placeholders representing columns in a database table.
+#Placeholders in I<$template> can take the following forms:
+
+#=over 4
+
+#=item B<E<lt>DbField table.column [value=value] [type=type]E<gt>>
+
+#If the table's name() matches I<table> in a B<DbField> placeholder,
+#the placeholder will be replaced with the corresponding HTML form
+#field for the column named I<column> with arguments I<value> and
+#I<type> (see L<DbFramework::Attribute/html_form_field()>).  If
+#I<%values> is supplied placeholders will have the values in I<%values>
+#added where a key in I<%values> matches a column name in the table.
+
+#=item B<E<lt>DbFKey table.fk_name[,column...]E<gt>>
+
+#If the table's name() matches I<table> in a B<DbFKey> placeholder, the
+#placeholder will be replaced with the a selection box containing
+#values and labels from the primary key columns in the related table.
+#Primary key attribute values in I<%values> will be used to select the
+#default item in the selection box.
+
+#=item B<E<lt>DbValue table.column[,column...]E<gt>>
+
+#If the table's name() matches I<table> in a B<DbValue> placeholder,
+#the placeholder will be replaced with the values in I<%values> where a
+#key in I<%values> matches a column name in the table.
+
+#=item B<E<lt>DbJoin table.column.template[.order][.column_name[;column_name...]]E<gt>>
+
+#A B<DbJoin> placeholder will cause a join to be performed between this
+#table and the table specified in I<table> over the column I<column>
+#where the value equals I<%values{column}> orderd by I<order>.  Values
+#will be selected from columns specified with I<column_name>.
+#I<column_name> may refer to functions supported by the database in a
+#B<SELECT> clause.  If no I<column_name>s are specified, the values
+#from all columns from I<table> will be selected.  The placeholder will
+#be replaced by the concatenation of I<template> filled with the values
+#from each row returned by the join.  B<DbJoin> placeholders may be
+#chained.
+
+#=back
+
+#The easiest way to pass the values required to fill a template is by
+#calling fill_template() with the name of the template and the hashrefs
+#returned by select_loh() e.g.
+
+#  for ( $foo->select_loh(\@columns) ) {
+#    $html .= $foo->fill_template($template,$_)
+#  }
+
+#=cut
 
 sub fill_template {
   my($self,$name,$values) = (attr shift,shift,shift);
   print STDERR "filling template '$name' for table '$NAME'\n" if $_DEBUG;
   return '' unless exists $TEMPLATE_H{$name};
+
   my $template = $TEMPLATE_H{$name};
+#  if ( $_DEBUG ) {
+#    print STDERR "\$template = $template\n";
+#    print STDERR "\$values = ", defined($values) ? %$values : 'undef',"\n" ;
+#  }
+#  my $error;
+#  my $rc = Parse::ePerl::Expand({
+#			  Script => $template,
+#			  Result => \$template,
+#			  Error  => \$error,
+#			 });
+#  die "Error parsing ePerl in template $name: $error" unless $rc;
+#  if ( $_DEBUG ) {
+#    print STDERR "\$rc = $rc\n";
+#    print STDERR "\$template = ",defined($template) ? $template : 'undef',"\n";
+#  }
 
-  #print STDERR "template = \n$TEMPLATE_H{$name}\n\$values = ",%$values,"\n" if $_DEBUG;
-
+  my %fk = %{$self->has_foreign_keys_h};
 
   # insert values into template
   if ( defined($values) ) {
+    # only works for single column foreign keys
+    $template =~ s/<DbJoin\s+(\w+)\.(\w+)\.(\w+)(\.(\w*))?(\.(.*))?\s*>/$self->_join_fill_template($1,$2,$3,$5,$values->{$2},$7)/eg;
+
     $template =~ s/(<DbField\s+$NAME\.)(\w+)(\s+value=)(.*?\s*)>/$1$2 value=$values->{$2}>/g;
     $template =~ s/(<DbField $NAME\.)(\w+)>/$1$2 value=$values->{$2}>/g;
     # handle multiple attributes here for foreign key values
     $template =~ s/<DbValue\s+$NAME\.([\w,]+)\s*>/join(',',@{$values}{split(m{,},$1)})/eg;
+    # values which are the result of applying functions to a column
+    $template =~ s/<DbValue\s+$NAME\.(.+)\s*>/$values->{$1}/g;
   }
 
   #print STDERR "template = \n$TEMPLATE_H{$name}\n\$values = ",%$values,"\n" if $_DEBUG;
 
   # foreign key placeholders
-  my %fk = %{$self->has_foreign_keys_h};
   $template =~ s/<DbFKey\s+$NAME\.(\w+)\s*>/$fk{$1}->as_html_form_field($values)/eg;
 
   # form field placeholders
@@ -632,13 +717,13 @@ sub _as_html_form_field {
 
 #------------------------------------------------------------------------------
 
-=head2 set_templates(%templates)
+#=head2 set_templates(%templates)
 
-Adds the contents of the files which are the values in I<%templates>
-as templates named by the keys in I<%templates>.  Returns a reference
-to a hash of all templates.
+#Adds the contents of the files which are the values in I<%templates>
+#as templates named by the keys in I<%templates>.  Returns a reference
+#to a hash of all templates.
 
-=cut
+#=cut
 
 sub set_templates {
   my $self = attr shift;
@@ -667,35 +752,35 @@ sub _templates {
 #------------------------------------------------------------------------------
 
 sub _template {
-  my($self,$key,$method) = (attr shift,shift,shift);
+  my($self,$method) = (attr shift,shift);
   my @fk_attributes;
   for ( @HAS_FOREIGN_KEYS_L ) { push(@fk_attributes,$_->attribute_names) }
   my $t = $IS_IDENTIFIED_BY->$method(@fk_attributes) || '';
   for ( $self->non_key_attributes ) { $t .= $_->$method($NAME) }
   for ( @IS_ACCESSED_USING_L )      { $t .= $_->$method() }
   for ( @HAS_FOREIGN_KEYS_L )       { $t .= $_->$method() }
-  $self->template_h_add({$key => $t});
+  $t;
 }
 
 #------------------------------------------------------------------------------
 
-=head2 read_form($form,$dir)
+#=head2 read_form($name,$path)
 
-Configure templates by evaluating the contents of
-F<$dir/$db/$table/$form> where I<$dir> is a directory
-(F</usr/local/etc/dbframework> by default), I<$db> is the name of the
-database containing the table, I<$table> is the name of the table and
-I<$form> is the name of the form containing the template definitions.
-See L<Forms and Templates>.
+#Assigns the contents of a file to a template.  I<$name> is the name of
+#the template and I<$path> is the path to the file.  If I<$path> is
+#undefined, tries to read
+#F</usr/local/etc/dbframework/$db/$table/$name.form>, where I<$db> is
+#the name of the database containing the table and I<$table> is the
+#name of the table.  See L<Forms and Templates>.
 
-=cut
+#=cut
 
 sub read_form {
   my $self = attr shift;
-  my $dir  = $_[1] || $formsdir;
-  my $form = "$dir/".$self->get_db($DBH)."/$NAME/$FORM_H{$_[0]}";
-  my $templates = _readfile_no_comments($form,"Couldn't open form");
-  %TEMPLATE_H = eval $templates;
+  my $name = shift;
+  my $db = $self->belongs_to ? $self->belongs_to->db : 'UNKNOWN_DB';
+  my $path = shift || "$formsdir/$db/$NAME/$name.form";
+  $TEMPLATE_H{$name} = _readfile_no_comments($path,"Couldn't open form");
 }
 
 #------------------------------------------------------------------------------
@@ -716,7 +801,7 @@ sub _readfile_no_comments {
 
 =head2 as_html_heading()
 
-Returns a string for use as a table heading row in an HTML table;
+Returns a string for use as a table heading row in an HTML table.
 
 =cut
 
@@ -727,17 +812,46 @@ sub as_html_heading {
   for ( @HAS_FOREIGN_KEYS_L ) { push(@fk_attributes,$_->attribute_names) }
   my $html = $IS_IDENTIFIED_BY->$method(@fk_attributes);
   for ( $self->non_key_attributes ) { $html .= $_->$method() }
-  for ( @IS_ACCESSED_USING_L )      { $html .= $_->$method() }
+  my @key_attributes = (@fk_attributes, $IS_IDENTIFIED_BY->attribute_names);
+  my(%key_attributes,$bgcolor);
+  for my $key ( @IS_ACCESSED_USING_L ) {
+    # get unique hash of key attributes
+    for ( @{$key->incorporates_l} ) {
+      my $name = $_->name;
+      $key_attributes{$_->name} = $_ unless grep(/^$name$/,@key_attributes);
+    }
+    $bgcolor = $key->bgcolor;
+  }
+  for ( values(%key_attributes) )   { $html .= $_->$method($bgcolor) }
   for ( @HAS_FOREIGN_KEYS_L )       { $html .= $_->$method() }
   "<TR>$html</TR>";
 }
 
-1;
+#------------------------------------------------------------------------------
+
+# Returns an HTML string by filling I<$template> in I<table> with the
+# values SELECTed WHERE the values in the I<$column_name> match $value.
+
+sub _join_fill_template {
+  my $self = attr shift;
+  my($table_name,$column_name,$template,$order,$value,$columns) = @_;
+  print STDERR "\@_ = @_\n\$columns = $columns\n" if $_DEBUG;
+  my($table) = $BELONGS_TO->collects_table_h_byname($table_name)
+    or die("Can't find table $table_name in data model ".$BELONGS_TO->name);
+  my @columns = $columns ? split(';',$columns) : $table->attribute_names;
+  my $html;
+  $table->read_form($template);
+  for my $hashref ( $table->select_loh(\@columns,"$column_name = $value",$order) ) {
+    print STDERR "\$template = $template, \$hashref = ",%$hashref,"\n" if $_DEBUG;
+    $html .= $table->fill_template($template,$hashref);
+  }
+  $html;
+}
 
 =head1 SEE ALSO
 
-L<DbFramework::DefinitionObject>, L<DbFramework::Attribute> and
-L<DbFramework::DataModelObject>.
+L<DbFramework::DefinitionObject>, L<DbFramework::Attribute>,
+L<DbFramework::DataModelObject> and L<DbFramework::DataModel>.
 
 =head1 AUTHOR
 
@@ -745,9 +859,10 @@ Paul Sharpe E<lt>paul@miraclefish.comE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (c) 1997,1998 Paul Sharpe. England.  All rights reserved.
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+Copyright (c) 1997,1998,1999 Paul Sharpe. England.  All rights
+reserved.  This program is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
 
 =cut
 
+1;

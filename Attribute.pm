@@ -6,14 +6,15 @@ DbFramework::Attribute - Attribute class
 
   use DbFramework::Attribute;
   my $a = new DbFramework::Attribute($name,$default_value,$is_optional,$data_type);
-  $a->name($name);
-  $a->default_value($value);
-  $a->is_optional($boolean);
-  $a->references($data_type);
-  $sql  = $a->as_sql;
-  $s    = $a->as_string;
-  $html = $a->as_html_form_field($value,$type);
-  $html = $a->as_html_heading;
+  $name  = $a->name($name);
+  $value = $a->default_value($value);
+  $opt   = $a->is_optional($boolean);
+  $type  = $a->references($data_type);
+  $bgc   = $a->bgcolor($bgcolor);
+  $sql   = $a->as_sql;
+  $s     = $a->as_string;
+  $html  = $a->as_html_form_field($value,$type);
+  $html  = $a->as_html_heading($bgcolor);
 
 =head1 DESCRIPTION
 
@@ -76,30 +77,33 @@ sub new {
 
 =head2 name($name)
 
-If I<$name> is supplied, sets the attribute name.  Returns the
+If I<$name> is supplied sets the attribute name.  Returns the
 attribute name.
 
 =head2 default_value($value)
 
-If I<$value> is supplied, sets the default value for the attribute.
-Returns the default value for the attribute.
+If I<$value> is supplied sets the default value for the attribute.
+I<$value> should be compatible with the the data type set by
+references().  Returns the default value for the attribute.
 
 =head2 is_optional($boolean)
 
-If I<$boolean> is supplied, sets the optionality of the attribute.
-I<$boolean> should evaluate to true or false.  Returns the optionality
-of the attribute.
+If I<$boolean> is supplied sets the optionality of the attribute
+(i.e. whether it can contain NULLs.)  I<$boolean> should evaluate to
+true or false.  Returns the optionality of the attribute.
 
 =head2 references($data_type)
 
-If I<$data_type> is supplied, sets the data type of the attribute.
-I<$data_type> is a B<DbFramework::DataType> object.  Returns a
-B<DbFramework::DataType> object.
+If I<$data_type> is supplied sets the data type of the attribute.
+I<$data_type> is an ANSII data type object
+i.e. B<DbFramework::DataType::ANSII> or a driver-specific object
+e.g. B<DbFramework::DataType::Mysql>.  Returns the data type object.
 
 =head2 bgcolor($bgcolor)
 
-If I<$color> is supplied, sets the background colour for HTML table
-cells.  Returns the current background colour.
+If I<$color> is supplied sets the background colour for HTML table
+headings returned by as_html_heading().  Returns the current
+background colour.
 
 =head2 as_sql($dbh)
 
@@ -124,22 +128,21 @@ sub as_sql {
 =head2 as_html_form_field($value,$type)
 
 Returns an HTML form field representation of the attribute.  The HTML
-field type produced depends on the name of the associated
-B<DbFramework::DataType> object.  This can be overidden by setting
-I<$type>.  I<$value> is the default value to be entered in the
-generated field.
+field type produced depends on the name of object returned by
+data_type().  This can be overidden by setting I<$type>.  I<$value> is
+the default value to be entered in the generated field.
 
 =cut
 
 sub as_html_form_field {
   my $self   = attr shift;
   my $value  = defined($_[0]) ? $_[0] : '';
-  my $type   = defined($_[1]) ? $_[1] : $REFERENCES->name;
+  my $type   = defined($_[1]) ? uc($_[1]) : $REFERENCES->name;
   my $length = $REFERENCES->length;
   my $html;
 
- SWITCH: {
-    $type =~ /INT/ &&
+SWITCH: {
+    $type =~ /(INT|DATE)/ &&
       do { 
 	$html = qq{<INPUT NAME="$NAME" VALUE="$value" SIZE=10 TYPE="text">};
 	last SWITCH;
@@ -204,33 +207,35 @@ sub _output_template {
 
 #-----------------------------------------------------------------------------
 
-=head2 as_html_heading()
+=head2 as_html_heading($bgcolor)
 
-Returns a string for use as a column heading cell in an HTML table;
+Returns a string for use as a column heading cell in an HTML table.
+I<$bgcolor> is the background colour to use for the heading.
 
 =cut
 
 sub as_html_heading {
   my $self = attr shift;
+  my $bgcolor = shift || $BGCOLOR;
   my $text = $NAME;
   $text .= ' ('.$REFERENCES->extra.')' if $REFERENCES->extra;
-  qq{<TD BGCOLOR='$BGCOLOR'>$text</TD>};
+  qq{<TD BGCOLOR='$bgcolor'>$text</TD>};
 }
 
 1;
 
 =head1 SEE ALSO
 
-L<DbFramework::DataType>
+L<DbFramework::DataType::ANSII> and L<DbFramework::DataType::Mysql>.
 
 =head1 AUTHOR
 
-Paul Sharpe
+Paul Sharpe E<lt>paul@miraclefish.comE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (c) 1997,1998 Paul Sharpe. England.  All rights reserved.
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+Copyright (c) 1997,1998,1999 Paul Sharpe. England.  All rights
+reserved.  This program is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
 
 =cut

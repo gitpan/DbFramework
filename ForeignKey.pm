@@ -5,10 +5,10 @@ DbFramework::ForeignKey - Foreign Key class
 =head1 SYNOPSIS
 
   use DbFramework::ForeignKey;
-  my $fk = new DbFramework::ForeignKey($name,\@attributes,$primary);
-  $fk->references($primary);
-  $sql   = $fk->as_sql;
-  $html  = $fk->as_html_form_field(\%values);
+  $fk   = new DbFramework::ForeignKey($name,\@attributes,$primary);
+  $pk   = $fk->references($primary);
+  $sql  = $fk->as_sql;
+  $html = $fk->as_html_form_field(\%values);
 
 =head1 DESCRIPTION
 
@@ -73,7 +73,7 @@ sub new {
 =head2 references($primary)
 
 I<$primary> should be a B<DbFramework::PrimaryKey> object.  If
-supplied, it sets the primary key referenced by this foreign key.
+supplied it sets the primary key referenced by this foreign key.
 Returns the B<DbFramework::PrimaryKey> object referenced by this
 foreign key.
 
@@ -94,7 +94,7 @@ sub _output_template {
   # output template consists of attributes from related pk table
   my $pk_table   = $self->references->belongs_to;
   my $name       = $pk_table->name;
-  my $attributes = join(',',$pk_table->get_attribute_names);
+  my $attributes = join(',',$pk_table->attribute_names);
   my $out = qq{<TD BGCOLOR='$BGCOLOR'><DbValue ${name}.$attributes></TD>};
   print STDERR "\$out = $out\n" if $_DEBUG;
   $out;
@@ -116,16 +116,22 @@ sub as_html_form_field {
   my $self      = attr shift;
   my %values    = $_[0] ? %{$_[0]} : ();
   my $pk        = $self->references;
-  my @fk_values = @values{$self->attribute_names}; # hash slice
+#  my @fk_values = @values{$self->attribute_names}; # hash slice
   my $name      = join(',',$self->attribute_names);
-  $pk->html_select_field(undef,undef,\@fk_values,$name);
+  # only handles single attribute foreign keys
+  my $t_name    = $BELONGS_TO->name;
+  my @fk_value;
+  $fk_value[0] = $values{"${t_name}.${name}"};
+  #print STDERR "\$t_name = $t_name, \$name = $name, \@fk_value = @fk_value\n";
+  $pk->html_select_field(undef,undef,\@fk_value,$name);
 }
 
 1;
 
 =head1 SEE ALSO
 
-L<DbFramework::Key>, L<DbFramework::PrimaryKey>.
+L<DbFramework::Key>, L<DbFramework::PrimaryKey> and
+L<DbFramework::Catalog>.
 
 =head1 AUTHOR
 
@@ -133,8 +139,8 @@ Paul Sharpe E<lt>paul@miraclefish.comE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (c) 1997,1998 Paul Sharpe. England.  All rights reserved.
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+Copyright (c) 1997,1998,1999 Paul Sharpe. England.  All rights
+reserved.  This program is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
 
 =cut

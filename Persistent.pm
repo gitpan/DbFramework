@@ -14,28 +14,16 @@ DbFramework::Persistent - Persistent Perl object base class
   $foo->attributes_h(\%new_foo);
   $foo->update;
   $foo->delete;
-  @foo = $foo->select($condition);
+  $foo->init_pk;
+  @foo     = $foo->select($condition,$order);
+  $hashref = $foo->table_qualified_attribute_hashref;
+  $code    = DbFramework::Persistent::make_class($name);
 
 =head1 DESCRIPTION
 
-Base class for persistent objects which use a Mysql database for
+Base class for persistent objects which use a DBI database for
 storage.  To create your own persistent object classes subclass
-B<DbFramework::Persistent> e.g.
-
-  package Foo;
-  use base qw(DbFramework::Persistent);
-
-  package main;
-  ... # make a dbh
-  $foo = new Foo($table,$dbh);
-  $foo->attributes_h(\%foo};
-  $fill = $foo->fill_template;
-  $foo->insert;
-  $foo->attributes_h(\%new_foo);
-  $foo->update;
-  $foo->delete;
-  @foo = $foo->select($condition);
-  $html = $foo->as_html_form;
+B<DbFramework::Persistent> (see the make_class() class method.)
 
 =head1 SUPERCLASSES
 
@@ -45,8 +33,8 @@ B<DbFramework::Util>
 
 package DbFramework::Persistent;
 use strict;
-use vars qw( $TABLE $_DEBUG $VERSION );
-$VERSION = '1.06';
+use vars qw( $TABLE $_DEBUG $VERSION %ATTRIBUTES_H );
+$VERSION = '1.07';
 use base qw(DbFramework::Util);
 use Alias;
 use DbFramework::Table;
@@ -90,7 +78,8 @@ sub new {
 
 =head2 make_class($name)
 
-Make a new persistent object class called I<$name>.
+Returns some Perl code which can be used with eval() to create a new
+persistent object (sub)class called I<$name>.
 
 =cut
 
@@ -116,12 +105,13 @@ EOF
 Attributes in a persistent object which relate to columns in the
 associated table are made available through the attribute
 I<ATTRIBUTES_H>.  See L<DbFramework::Util/AUTOLOAD()> for the accessor
-methods for these attributes.
+methods for this attribute.
 
 =head2 delete()
 
 Delete this object from the associated table based on the values of
-it's primary key attributes.  Returns the number of rows deleted.
+it's primary key attributes.  Returns the number of rows deleted if
+supplied by the DBI driver.
 
 =cut
 
@@ -135,7 +125,7 @@ sub delete {
 =head2 insert()
 
 Insert this object in the associated table.  Returns the primary key
-of the inserted row if it is a Mysql 'AUTO_INCREMENT' column.
+of the inserted row if it is a Mysql 'AUTO_INCREMENT' column or -1.
 
 =cut
 
@@ -149,7 +139,7 @@ sub insert {
 =head2 update()
 
 Update this object in the associated table.  Returns the number of
-rows updated.
+rows updated if supplied by the DBI driver.
 
 =cut
 
@@ -160,12 +150,13 @@ sub update {
 
 #------------------------------------------------------------------------------
 
-=head2 select($conditions)
+=head2 select($conditions,$order)
 
 Returns a list of objects of the same class as the object which
 invokes it.  Each object in the list has its attributes initialised
 from the values returned by selecting all columns from the associated
-table matching I<$conditions>.
+table matching I<$conditions> ordered by the list of columns in
+I<$order>.
 
 =cut
 
@@ -173,8 +164,8 @@ sub select {
   my $self = attr shift;
 
   my @things;
-  my @columns = $TABLE->get_attribute_names;
-  for ( $TABLE->select(\@columns,shift) ) {
+  my @columns = $TABLE->attribute_names;
+  for ( $TABLE->select(\@columns,shift,shift) ) {
     print STDERR "\@{\$_} = @{$_}\n" if $_DEBUG;
     # pass Table *object* to new to retain any fk relationships
     my $thing = $self->new($TABLE,$TABLE->dbh);
@@ -225,12 +216,12 @@ sub select {
  
 sub _pk_conditions {
   my $self = attr shift;
-
   my %attributes = %{$self->attributes_h};
   my $conditions;
-  for ( $TABLE->is_identified_by->attribute_names ) {
+  for ( @{$TABLE->is_identified_by->incorporates_l} ) {
     $conditions .= ' AND ' if $conditions;
-    $conditions .= "$_ = " . $TABLE->dbh->quote($attributes{$_});
+    my($name,$type) = ($_->name,$_->references->type);
+    $conditions .= "$name = " . $TABLE->dbh->quote($attributes{$name},$type);
   }
   print STDERR "$conditions\n" if $_DEBUG;
   $conditions;
@@ -238,13 +229,13 @@ sub _pk_conditions {
 
 ##-----------------------------------------------------------------------------
 
-=head2 fill_template($name)
+#=head2 fill_template($name)
 
-Returns the template named I<$name> in the table associated with this
-object filled with the object's attribute values.  See
-L<DbFramework::Table/"fill_template()">.
+#Returns the template named I<$name> in the table associated with this
+#object filled with the object's attribute values.  See
+#L<DbFramework::Table/"fill_template()">.
 
-=cut
+#=cut
 
 sub fill_template {
   my($self,$name) = (attr shift,shift);
@@ -274,11 +265,47 @@ sub as_html_form {
   return $html;
 }
 
+#------------------------------------------------------------------------------
+
+=head2 init_pk()
+
+Initialise an object by setting its attributes based on the current
+value of the its primary key attributes.
+
+=cut
+
+sub init_pk {
+  my $self = attr shift;
+  my @loh  = $TABLE->select_loh(undef,$self->_pk_conditions);
+  $self->attributes_h([ %{$loh[0]} ]);
+}
+
+#------------------------------------------------------------------------------
+
+=head2 table_qualified_attribute_hashref()
+
+Returns a reference to a hash whose keys are the keys of
+I<%ATTRIBUTES_H> with a prefix of I<$table>, where I<$table> is the
+table associated with the object and whose values are values from
+I<%ATTRIBUTES_H>.  This is useful for filling a template (see
+L<DbFramework::Template/fill()>.)
+
+=cut
+
+sub table_qualified_attribute_hashref {
+  my $self   = attr shift;
+  my $t_name = $TABLE->name;
+  my %tq;
+  for ( keys %ATTRIBUTES_H ) { $tq{"$t_name.$_"} = $ATTRIBUTES_H{$_} }
+  return \%tq;
+}
+
 1;
 
 =head1 SEE ALSO
 
-L<DbFramework::Util> and L<DbFramework::Table>.
+L<DbFramework::Util>, L<DbFramework::Table> and
+L<DbFramework::Template>.
 
 =head1 AUTHOR
 
@@ -286,7 +313,7 @@ Paul Sharpe E<lt>paul@miraclefish.comE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (c) 1997,1998 Paul Sharpe. England.  All rights reserved.
+Copyright (c) 1997,1998,1999 Paul Sharpe. England.  All rights reserved.
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
 

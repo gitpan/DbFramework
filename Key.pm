@@ -6,7 +6,7 @@ DbFramework::Key - Key class
 
   use DbFramework::Key;
   $k = new DbFramework::Key($name,\@attributes);
-  $k->name($name);
+  $name  = $k->name($name);
   @a     = @{$k->incorporates_l(\@attributes)};
   @names = $k->attribute_names;
   $sql   = $k->as_sql;
@@ -70,25 +70,25 @@ sub new {
 
 =head1 OBJECT METHODS
 
-A data model incorporates 0 or more attributes.  These attributes can
-be accessed using the attribute I<INCORPORATES_L>.  See
+A key incorporates 0 or more attributes.  These attributes can be
+accessed using the attribute I<INCORPORATES_L>.  See
 L<DbFramework::Util/AUTOLOAD()> for the accessor methods for this
 attribute.
 
 =head2 name($name)
 
-If I<$name> is supplied, sets the data model name.  Returns the data
+If I<$name> is supplied sets the data model name.  Returns the data
 model name.
 
 =head2 belongs_to($table)
 
-I<$table> is a B<DbFramework::Table> object.  If supplied, sets the
+I<$table> is a B<DbFramework::Table> object.  If supplied sets the
 table to which this key refers to I<$table>.  Returns a
 B<DbFramework::Table>.
 
 =head2 bgcolor($bgcolor)
 
-If I<$color> is supplied, sets the background colour for HTML table
+If I<$color> is supplied sets the background colour for HTML table
 cells.  Returns the current background colour.
 
 =head2 attribute_names()
@@ -165,7 +165,8 @@ sub as_html_heading {
 
 =head1 SEE ALSO
 
-L<DbFramework::ForeignKey> and L<DbFramework::PrimaryKey>.
+L<DbFramework::ForeignKey>, L<DbFramework::PrimaryKey> and
+L<DbFramework::Catalog>.
 
 =head1 AUTHOR
 

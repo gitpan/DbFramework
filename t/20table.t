@@ -2,198 +2,149 @@
 # `make test'. After `make install' it should work as `perl test.pl'
 use strict;
 use Test;
+use t::Config;
 
-BEGIN { plan tests => 42}
+BEGIN { 
+  my %tests = ( mysql => 28, mSQL => 27 );
+  my $tests;
+  for ( @t::Config::drivers ) { $tests += $tests{$_} }
+  plan tests => $tests;
+}
 
+require 't/util.pl';
 use DbFramework::Attribute;
 use DbFramework::Table;
-use DbFramework::DataType;
 use DbFramework::Util;
 use DbFramework::DataModel;
+use DbFramework::Catalog;
 
-my $dbh        = DbFramework::Util::get_dbh('music');
-$dbh->{PrintError} = 0;
-my $a1_sql     = q{song_id INT(11) NOT NULL AUTO_INCREMENT};
-my $a2_sql     = q{song_name VARCHAR(127) NOT NULL DEFAULT 'Song With No Name'};
+for ( @t::Config::drivers ) { foo($_) }
 
-my $create_sql = qq{CREATE TABLE artist (
-  art_id int(11) DEFAULT '0' NOT NULL AUTO_INCREMENT,
-  art_name varchar(127),
-  PRIMARY KEY (art_id)
-)};
-drop_create('artist',$create_sql);
-my $composition_sql = qq{CREATE TABLE composition (
-  art_id int(11) DEFAULT '0' NOT NULL,
-  song_id int(11) DEFAULT '0' NOT NULL,
-  PRIMARY KEY (art_id,song_id),
-  KEY f_artist (art_id),
-  KEY f_song (song_id)
-)};
-drop_create('composition',$composition_sql);
-$create_sql = qq{CREATE TABLE label (
-	lbl_id int(11) not null auto_increment,
-	lbl_name varchar(127) not null,
-	PRIMARY KEY (lbl_id),
-	KEY lbl_name (lbl_name)
-)};
-drop_create('label',$create_sql);
-$create_sql = qq{CREATE TABLE release (
-	rlse_id int(11) not null auto_increment,
-	rlse_name varchar(127) not null,
-        lbl_id int(11) not null,
-	PRIMARY KEY (rlse_id),
-        KEY f_label (lbl_id),
-	KEY lbl_name (rlse_name)
-)};
-drop_create('release',$create_sql);
-$create_sql = qq{CREATE TABLE song (
-	$a1_sql,
-	$a2_sql,
-	PRIMARY KEY (song_id),
-	KEY song_name (song_name)
-)};
-drop_create('song',$create_sql);
+sub foo($) {
+  my($driver) = @_;
 
-# invalid data type
-my $bad = eval { new DbFramework::DataType('foo',0,undef) };
-$@ =~ s/\nValid.*$//s;
-ok($@,"Invalid datatype 'FOO'");
+  my $db  = 'dbframework_test';
+  my $dsn = "DBI:$driver:database=$db";
+  my $dm  = new DbFramework::DataModel($db,$dsn);
+  my $dbh = $dm->dbh; $dbh->{PrintError} = 0;
 
-# attributes
-my $a1 = new DbFramework::Attribute('song_id',0,0,
-				    new DbFramework::DataType('int',
-							      11,
-							      'auto_increment'
-							     )
-				   );
+  my $c = new DbFramework::Catalog("DBI:$driver:database=$DbFramework::Catalog::db");
+  $dm->init_db_metadata;
+  my $foo_table = $dm->collects_table_h_byname('foo');
 
-ok($a1->as_sql($dbh),$a1_sql);
-
-my $a2 = new DbFramework::Attribute('song_name','Song With No Name',0,
-				    new DbFramework::DataType('varchar',
-							      127,
-							      undef
-							     )
-				   );
-ok($a2->as_sql($dbh),$a2_sql);
-
-my $pk = new DbFramework::PrimaryKey([$a1]);
-ok($pk->incorporates_l->[0]->name,$a1->name);
-
-# table
-my $t = new DbFramework::Table('song',[ $a1,$a2 ],$pk,$dbh);
-ok($t->name,'song');
-ok($t->contains_l->[0],$a1);
-ok($t->contains_l->[1],$a2);
-ok($t->get_attributes,2);
-
-my @a_names = $t->get_attribute_names;
-ok("@a_names","song_id song_name");
-my $text = <<EOF;
-Table: song
-song_id(INT (11) NOT NULL AUTO_INCREMENT)
-song_name(VARCHAR (127) 'Song With No Name' NOT NULL)
+  # as_string()
+  my $ok_string;
+  if ( $driver eq 'mysql' ) { # supports auto_increment
+    $ok_string = <<EOF;
+Table: foo
+foo(INTEGER UNSIGNED (11) NOT NULL AUTO_INCREMENT)
+bar(VARCHAR (10) NOT NULL)
+baz(VARCHAR (10) NOT NULL)
+quux(INTEGER UNSIGNED (11) NOT NULL)
+foobar(TEXT (65535))
 EOF
-ok($t->as_string,$text);
-
-$text = <<EOF;
-Table: song
-song_id(INT (11) NOT NULL AUTO_INCREMENT)
-song_name(VARCHAR (127) 'Song With No Name' NOT NULL)
+  } else {
+    $ok_string = <<EOF;
+Table: foo
+foo(INT (4) NOT NULL)
+bar(CHAR (10) NOT NULL)
+baz(CHAR (10))
+quux(INT (4))
+foobar(TEXT (10))
 EOF
-my $t2 = new DbFramework::Table('song',undef,undef,$dbh);
-$t2->init_db_metadata;
-ok($t2->as_string,$text);
-ok($t2->as_sql,$create_sql);
-
-# table as html
-$text = <<EOF;
-<tr><td><INPUT NAME="song_id" VALUE="" SIZE=10 TYPE="text"></td></tr>
-<tr><td><INPUT NAME="song_name" VALUE="" SIZE=30 TYPE="text" MAXLENGTH=127></td></tr>
-EOF
-ok($t->as_html_form,$text);
-ok($t2->as_html_form,$text);
-
-# SQL ops on a table
-$t2->delete;
-ok(1);
-my @songs;
-for ('Relax','Rio','Really Free','JuJu') {
-  push(@songs,{ song_id => 0, song_name => $_ });
 }
-for ( @songs ) { $pk = $t2->insert($_) }
-ok($pk,$#songs + 1);
-my @lol = $t2->select(['song_id']);
-ok(@lol,4);
-ok($t2->delete(q{song_name like 'R%'}),3);
-my $new_song = 'Speak No Evil';
-ok($t2->update({song_name => $new_song },q{song_name = 'JuJu'}),1);
-@lol = $t2->select(['song_name']);
-ok($lol[0]->[0],$new_song);
+  ok($foo_table->as_string,$ok_string);
 
-# data model
-my $dm = new DbFramework::DataModel('Music','music');
+  # as_html_form()
+  $ok_string = <<EOF;
+<tr><td><INPUT NAME="foo" VALUE="" SIZE=10 TYPE="text"></td></tr>
+<tr><td><INPUT NAME="bar" VALUE="" SIZE=30 TYPE="text" MAXLENGTH=10></td></tr>
+<tr><td><INPUT NAME="baz" VALUE="" SIZE=30 TYPE="text" MAXLENGTH=10></td></tr>
+<tr><td><INPUT NAME="quux" VALUE="" SIZE=10 TYPE="text"></td></tr>
+<tr><td><TEXTAREA COLS=60 NAME="foobar" ROWS=4></TEXTAREA></td></tr>
+EOF
+  ok($foo_table->as_html_form,$ok_string);
 
-ok($dm->collects_table_h_byname('song')->as_html_form('foo.cgi'),$text);
+  # delete()
+  $foo_table->delete;
+  ok(1);
 
-ok($dm->collects_table_h_byname('composition')->is_identified_by->as_sql,"PRIMARY KEY (art_id,song_id)");
+  # insert()
+  my(@rows,$pk);
+  for ('foo','bar','baz','quux') {
+    push(@rows,{ foo => 0, bar => $_ });
+  }
+  for ( @rows ) { $pk = $foo_table->insert($_) }
+  
+  if ( $driver eq 'mysql' ) { # supports auto_increment
+    ok($pk,$#rows + 1);
+  } else {
+    ok(1);
+  }
 
-# foreign keys
-$t = $dm->collects_table_h_byname('label');
-ok($t->is_identified_by->incorporates->name,'lbl_id');
-$t = $dm->collects_table_h_byname('song');
-ok($t->is_identified_by->incorporates->name,'song_id');
-$t = $dm->collects_table_h_byname('artist');
-ok($t->is_identified_by->incorporates->name,'art_id');
+  # select()
+  my @lol = $foo_table->select(['foo']);
+  ok(@lol,4);
 
-$t = $dm->collects_table_h_byname('composition');
-ok($t->has_foreign_keys_h_byname('song_id')->name,'song_id');
-ok($t->has_foreign_keys_h_byname('art_id')->name,'art_id');
+  if ( $driver eq 'mysql' ) {
+    # apply a function to a column in a 'SELECT...'
+    my @loh = $foo_table->select_loh([q[lpad(foo,2,'0')]]);
+    ok($loh[0]->{q[lpad(foo,2,'0')]},'01');
+  }
 
-$t = $dm->collects_table_h_byname('release');
+  # mSQL doesn't return # rows modified
+  my $rows = ( $driver eq 'mSQL' ) ? -1 : 2;
+  ok($foo_table->delete(q{bar LIKE 'b%'}),$rows);
 
-my @fk = @{$t->has_foreign_keys_l};
-my %fk = %{$t->has_foreign_keys_h};
-my @keys = keys(%fk);
-ok(scalar(@fk),scalar(@keys));
-@fk = $dm->collects_table_h_byname('label')->is_identified_by->incorporates;
-ok(scalar(@fk),scalar(@keys));
-ok($fk[0],$fk{'lbl_id'});
+  # update()
+  my $new_bar = 'bar';
+  $rows = ( $driver eq 'mSQL' ) ? -1 : 1;
+  ok($foo_table->update({bar => $new_bar },q{bar = 'foo'}),$rows);
+  @lol = $foo_table->select(['bar'],undef,'bar');
+  ok($lol[0]->[0],$new_bar);
+  my @loh = $foo_table->select_loh(['bar'],undef,'bar');
+  ok($loh[0]->{bar},$new_bar);
 
-$t = $dm->collects_table_h_byname('song');
+  # data model
+  ok($dm->collects_table_h_byname('foo')->name,'foo');
+  ok($dm->collects_table_h_byname('foo')->is_identified_by->as_sql,"PRIMARY KEY (foo,bar)");
 
-# key
-ok($t->in_key($t->get_attributes('song_name')),1);
-ok($t->in_key($t->get_attributes('song_id')),0);
+  # foreign keys
+  $foo_table = $dm->collects_table_h_byname('foo');
+  ok($foo_table->is_identified_by->incorporates->name,'f_foo');
+  my $bar_table = $dm->collects_table_h_byname('bar');
+  ok($bar_table->has_foreign_keys_h_byname('f_foo')->name,'f_foo');
 
-# primary key
-ok($t->is_identified_by->belongs_to($t),$t);
-ok($t->in_primary_key($t->get_attributes('song_id')),1);
-ok($t->in_primary_key($t->get_attributes('song_name')),0);
+  my @fk = @{$bar_table->has_foreign_keys_l};
+  my %fk = %{$bar_table->has_foreign_keys_h};
+  my @keys = keys(%fk);
+  ok(scalar(@fk),scalar(@keys));
 
-# foreign key
-$t = $dm->collects_table_h_byname('composition');
-my @fks = @{$t->has_foreign_keys_l};
-ok(@fks,2);
-ok($t->in_foreign_key($t->get_attributes('song_id')),1);
-$t = $dm->collects_table_h_byname('song');
-ok($t->in_foreign_key($t->get_attributes('song_name')),0);
-$t = $dm->collects_table_h_byname('release');
-ok($t->in_foreign_key($t->get_attributes('lbl_id')),1);
+  @fk = $dm->collects_table_h_byname('foo')->is_identified_by->incorporates;
+  ok(scalar(@fk),scalar(@keys));
+  ok($fk[0],$fk{f_foo});
 
-# non-key
-$t = $dm->collects_table_h_byname('artist');
-ok($t->in_any_key($t->get_attributes('art_id')),1);
-ok($t->in_any_key($t->get_attributes('art_name')),0);
-my @nka = $t->non_key_attributes;
-ok($nka[0]->name,'art_name');
+  # keys
+  ok($foo_table->in_key($foo_table->get_attributes('bar')),1);
+  ok($foo_table->in_key($foo_table->get_attributes('foo')),0);
 
+  # primary keys
+  ok($foo_table->is_identified_by->belongs_to($foo_table),$foo_table);
+  ok($foo_table->in_primary_key($foo_table->get_attributes('foo')),1);
+  ok($foo_table->in_primary_key($foo_table->get_attributes('baz')),0);
 
-$dm->dbh->disconnect;
-$dbh->disconnect;
+  # foreign key
+  my @fks = @{$bar_table->has_foreign_keys_l};
+  ok(@fks,1);
+  ok($bar_table->in_foreign_key($bar_table->get_attributes('foo_foo')),1);
+  ok($bar_table->in_foreign_key($bar_table->get_attributes('foo')),0);
 
-sub drop_create {
-  my($table,$sql) = @_;
-  my $rv = $dbh->do("DROP TABLE $table");
-  return $dbh->do($sql) || die $dbh->errstr;
+  # non-keys
+  ok($foo_table->in_any_key($foo_table->get_attributes('foo')),1);
+  ok($bar_table->in_any_key($bar_table->get_attributes('bar')),0);
+  my @nka = $bar_table->non_key_attributes;
+  ok($nka[0]->name,'bar');
+
+  $dm->dbh->disconnect;
+  $dbh->disconnect;
 }

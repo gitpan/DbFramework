@@ -6,8 +6,10 @@ DbFramework::Util - DbFramework utility functions
 
   use DbFramework::Util;
   ($user,$password) = DbFramework::Util::get_auth();
-  $dbh = DbFramework::Util::get_dbh($db,$host,$port,$user,$password);
-  $object->get_db($dbh);
+  $dbh = DbFramework::Util::get_dbh($dsn,$user,$password);
+  $sth = DbFramework::Util::do_sql($dbh,$sql);
+  ($user,$password) = DbFramework::Util::get_auth();
+
   $object->debug($n);
 
 =head1 DESCRIPTION
@@ -21,7 +23,7 @@ package DbFramework::Util;
 use strict;
 use vars qw($AUTOLOAD);
 use IO::File;
-use DBI;
+use DBI 1.06;
 use Carp;
 
 ## CLASS DATA
@@ -65,8 +67,6 @@ A method B<*_l_add(@foo)> can be called on this type of attribute to
 add the elements in I<@foo> to the array.  If the attribute is defined
 they return the arrayref, otherwise they return an empty arrayref.
 
-=back
-
 =item B</_H$/>
 
 Attribute names matching the pattern B</_H$/> will be treated as
@@ -82,6 +82,7 @@ undefined.
 A method B<*_h_add(\%foo)> can be called on this type of attribute to
 add the elements in I<%foo> to the hash.  If the attribute is defined
 they return the hashref, otherwise they return an empty hashref.
+
 =back
 
 =cut
@@ -103,6 +104,9 @@ sub AUTOLOAD {
   unless ( exists $self->{_PERMITTED}->{$name} ) {
     die "Can't access `$name' field in class $type";
   }
+
+  print STDERR "\$_[0] = ",defined($_[0]) ? $_[0] : 'undef',"\n"
+    if $self->{_DEBUG};
 
   if ( $method =~ /_L$/ ) {             # set/get array
     @{$self->{$name}} = @{$_[0]} if $_[0];
@@ -130,8 +134,8 @@ sub AUTOLOAD {
 
 =head2 debug($n)
 
-As a class method, sets the class attribute I<$Debugging> to I<$n>.
-Aa an object method, sets the object attribute I<$_DEBUG> to I<$n>.
+As a class method sets the class attribute I<$Debugging> to I<$n>.  As
+an object method sets the object attribute I<$_DEBUG> to I<$n>.
 
 =cut
 
@@ -174,39 +178,33 @@ sub get_auth {
 
 #------------------------------------------------------------------------------
 
-=head2 get_dbh($db,$host,$port,$user,$password)
+=head2 get_dbh($dsn,$user,$password)
 
-Return a Mysql database handle for I<$db> (and optionally I<$host> and
-I<$port>) by connecting using I<$user> and I<$password>.
+Returns a database handle for the data source name I<$dsn> by
+connecting using I<$user> and I<$password>.
 
 =cut
 
 sub get_dbh {
-  my($db,$host,$port,$user,$password) = @_;
-  my $driver = "DBI:mysql:$db";
-  if ( defined($host) ) {
-    $driver .= ":$host";
-    $driver .= ":$port" if defined($port);
-  }
-  print STDERR "\$driver = $driver" if $Debugging;
-  return DBI->connect($driver,$user,$password) || die("$driver $DBI::errstr");
+  my($dsn,$user,$password) = @_;
+  return DBI->connect($dsn,$user,$password) || die("$dsn $DBI::errstr");
 }
 
 #------------------------------------------------------------------------------
 
-=head2 get_db($dbh)
+=head2 do_sql($dbh,$sql)
 
-Get the name of the database from the B<DBI> database handle I<$dbh>.
+Executes I<$sql> on I<$dbh> and returns a statement handle.  This
+method will die with I<$h-E<gt>errstr> if prepare() or execute() fails.
 
 =cut
 
-sub get_db {
-  my($self,$dbh) = @_;
-
-  my $sth   = $dbh->prepare('SELECT DATABASE()') || die($dbh->errstr);
-  my $rv    = $sth->execute                      || die($sth->errstr);
-  my($name) = $sth->fetchrow_array;
-  $name;
+sub do_sql {  
+  my($dbh,$sql) = @_;
+  #print "$sql\n";
+  my $sth = $dbh->prepare($sql) || die($dbh->errstr);
+  my $rv  = $sth->execute       || die($sth->errstr);
+  return $sth;
 }
 
 1;

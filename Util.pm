@@ -25,6 +25,7 @@ use vars qw($AUTOLOAD);
 use IO::File;
 use DBI 1.06;
 use Carp;
+use Term::ReadKey;
 
 ## CLASS DATA
 
@@ -162,17 +163,13 @@ entering password.
 =cut
 
 sub get_auth {
-  chop(my $tty = `tty`);
-  my $tty_h = new IO::File($tty,'r+');
-
-  print $tty_h "Username: ";
+  print "Username: ";
   chop(my $user = <STDIN>);
-  print $tty_h "Password: ";
-  system "stty -echo";
+  print "Password: ";
+  ReadMode 2;
   chop(my $password = <STDIN>);
-  print $tty_h "\n";
-  system "stty echo";
-
+  print "\n";
+  ReadMode 0;
   return($user,$password);
 }
 

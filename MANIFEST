@@ -1,5 +1,4 @@
 Attribute.pm
-CandidateKey.pm
 Catalog.pm
 DataModel.pm
 DataModelObject.pm
@@ -20,10 +19,10 @@ DataType/Mysql.pm
 forms/dbforms.cgi
 t/10base.t
 t/15catalog.t
+t/17datatype.t
 t/20table.t
 t/30persistent.t
 t/40template.t
-t/50datatype.t
 t/template
 t/test/foo/foo.form
 t/util.pl

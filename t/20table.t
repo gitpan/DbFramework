@@ -5,9 +5,10 @@ use Test;
 use t::Config;
 
 BEGIN { 
-  my %tests = ( mysql => 28, mSQL => 27 );
   my $tests;
-  for ( @t::Config::drivers ) { $tests += $tests{$_} }
+  for ( @t::Config::drivers ) { 
+    $tests += ($_ eq 'mSQL') ? 27 : 28;
+  }
   plan tests => $tests;
 }
 
@@ -21,29 +22,20 @@ use DbFramework::Catalog;
 for ( @t::Config::drivers ) { foo($_) }
 
 sub foo($) {
-  my($driver) = @_;
+  my $driver = shift;
 
-  my $db  = 'dbframework_test';
-  my $dsn = "DBI:$driver:database=$db";
-  my $dm  = new DbFramework::DataModel($db,$dsn);
+  my($catalog_db,$c_dsn,$c_u,$c_p) = connect_args($driver,'catalog');
+  my($test_db,$dsn,$u,$p)          = connect_args($driver,'test');
+  my $dm  = new DbFramework::DataModel($test_db,$dsn,$u,$p);
   my $dbh = $dm->dbh; $dbh->{PrintError} = 0;
 
-  my $c = new DbFramework::Catalog("DBI:$driver:database=$DbFramework::Catalog::db");
-  $dm->init_db_metadata;
+  my $c = new DbFramework::Catalog($c_dsn,$c_u,$c_p);
+  $dm->init_db_metadata($c_dsn,$c_u,$c_p);
   my $foo_table = $dm->collects_table_h_byname('foo');
 
   # as_string()
   my $ok_string;
-  if ( $driver eq 'mysql' ) { # supports auto_increment
-    $ok_string = <<EOF;
-Table: foo
-foo(INTEGER UNSIGNED (11) NOT NULL AUTO_INCREMENT)
-bar(VARCHAR (10) NOT NULL)
-baz(VARCHAR (10) NOT NULL)
-quux(INTEGER UNSIGNED (11) NOT NULL)
-foobar(TEXT (65535))
-EOF
-  } else {
+  if ( $driver eq 'mSQL' ) { # doesn't support auto_increment
     $ok_string = <<EOF;
 Table: foo
 foo(INT (4) NOT NULL)
@@ -52,14 +44,32 @@ baz(CHAR (10))
 quux(INT (4))
 foobar(TEXT (10))
 EOF
+} elsif ( $driver eq 'mysql' ) {
+    $ok_string = <<EOF;
+Table: foo
+foo(INTEGER UNSIGNED (11) NOT NULL AUTO_INCREMENT)
+bar(VARCHAR (10) NOT NULL)
+baz(VARCHAR (10) NOT NULL)
+quux(INTEGER UNSIGNED (11) NOT NULL)
+foobar(TEXT (65535))
+EOF
+} else {
+    $ok_string = <<EOF;
+Table: foo
+foo(INTEGER UNSIGNED (11) NOT NULL IDENTITY(0,1))
+bar(VARCHAR (10) NOT NULL)
+baz(VARCHAR (10) NOT NULL)
+quux(INTEGER UNSIGNED (11) NOT NULL)
+foobar(TEXT (65535))
+EOF
 }
   ok($foo_table->as_string,$ok_string);
 
   # as_html_form()
   $ok_string = <<EOF;
 <tr><td><INPUT NAME="foo" VALUE="" SIZE=10 TYPE="text"></td></tr>
-<tr><td><INPUT NAME="bar" VALUE="" SIZE=30 TYPE="text" MAXLENGTH=10></td></tr>
-<tr><td><INPUT NAME="baz" VALUE="" SIZE=30 TYPE="text" MAXLENGTH=10></td></tr>
+<tr><td><INPUT NAME="bar" VALUE='' SIZE=30 TYPE="text" MAXLENGTH=10></td></tr>
+<tr><td><INPUT NAME="baz" VALUE='' SIZE=30 TYPE="text" MAXLENGTH=10></td></tr>
 <tr><td><INPUT NAME="quux" VALUE="" SIZE=10 TYPE="text"></td></tr>
 <tr><td><TEXTAREA COLS=60 NAME="foobar" ROWS=4></TEXTAREA></td></tr>
 EOF
@@ -76,17 +86,17 @@ EOF
   }
   for ( @rows ) { $pk = $foo_table->insert($_) }
   
-  if ( $driver eq 'mysql' ) { # supports auto_increment
-    ok($pk,$#rows + 1);
-  } else {
+  if ( $driver eq 'mSQL' ) { # doesn't support auto_increment
     ok(1);
+  } else {
+    ok($pk,$#rows + 1);
   }
 
   # select()
   my @lol = $foo_table->select(['foo']);
   ok(@lol,4);
 
-  if ( $driver eq 'mysql' ) {
+  unless ( $driver eq 'mSQL' ) {
     # apply a function to a column in a 'SELECT...'
     my @loh = $foo_table->select_loh([q[lpad(foo,2,'0')]]);
     ok($loh[0]->{q[lpad(foo,2,'0')]},'01');

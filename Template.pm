@@ -65,7 +65,7 @@ Text::FillIn->Ldelim('(:');
 Text::FillIn->Rdelim(':)');
 
 my %fields = (
-	      TEMPLATE => new Text::FillIn(),
+	      TEMPLATE => {},
 	      TABLE_H  => {},
 	      VALUES   => {},
 	     );
@@ -89,8 +89,8 @@ sub new {
   my $class = ref($proto) || $proto;
   my $self  = bless { _PERMITTED => \%fields, %fields, }, $class;
 
-  my $template = $self->template;
-  $template->set_text(shift);
+  my $template = $self->template(new Text::FillIn());
+  $template->text(shift);
   $template->object($self);
   $template->hook('&','do_method');
 
@@ -181,6 +181,18 @@ sub db_fk_html_form_field {
 
 #------------------------------------------------------------------------------
 
+sub db_pk_html_hidden {
+  my($self,$arg) = (attr shift,shift);
+
+  # (:&db_pk_html_hidden(table):)
+  if ( my($t_name) = $arg =~ /^(\w+)$/ ) {
+    my $table = $TABLE_H{$t_name} or die "Can't find table in $arg";
+    $table->is_identified_by->as_hidden_html(\%VALUES);
+  }
+}
+
+#------------------------------------------------------------------------------
+
 =head2 default($table)
 
 I<$table> is a B<DbFramework::Table> object.  Sets up a default
@@ -215,7 +227,7 @@ sub default {
   for ( @{$table->has_foreign_keys_l} ) {
     push(@fk_attributes,$_->attribute_names)
   }
-  @key_attributes = (@fk_attributes, $table->is_identified_by->attribute_names);
+  @key_attributes = (@fk_attributes,$table->is_identified_by->attribute_names);
 
   for my $key ( @{$table->is_accessed_using_l} ) {
     # get unique hash of key attributes not in primary or foreign keys
@@ -234,7 +246,7 @@ sub default {
     $t .= qq{<TD>${l}&db_fk_html_form_field(${t_name}.${fk_name})${r}</TD>};
   }
  
-  $TEMPLATE->set_text($t);
+  $TEMPLATE->text($t);
 }
 
 1;

@@ -53,6 +53,7 @@ The following (Mysql) SQL creates the catalog database schema.
 	CREATE TABLE c_table (
 	  table_name varchar(50) DEFAULT '' NOT NULL,
 	  db_name varchar(50) DEFAULT '' NOT NULL,
+	  labels varchar(127) DEFAULT '',
 	  PRIMARY KEY (table_name,db_name)
 	);
 
@@ -82,14 +83,14 @@ the corresponding catalog entries required by DbFramework.
 	INSERT INTO c_db VALUES('foo');
 
 	# catalog entries for table 'foo'
-	INSERT INTO c_table VALUES('foo','foo');
+	INSERT INTO c_table VALUES('foo','foo','bar');
 	# primary key type = 0
 	INSERT INTO c_key VALUES('foo','foo','primary',0,'foo');
 	# index type = 2
 	INSERT INTO c_key VALUES('foo','foo','bar_index',2,'bar');
 
 	# catalog entries for table 'bar'
-	INSERT INTO c_table VALUES('bar','foo');
+	INSERT INTO c_table VALUES('bar','foo',NULL);
 	# primary key type = 0
 	INSERT INTO c_key VALUES('foo','bar','primary',0,'bar');
 	# foreign key type = 1
@@ -109,6 +110,7 @@ use base qw(DbFramework::Util);
 use DbFramework::PrimaryKey;
 use DbFramework::ForeignKey;
 use Alias;
+use Carp;
 use vars qw($DBH $_DEBUG %keytypes $db);
 
 ## CLASS DATA
@@ -159,6 +161,9 @@ sub new {
 =head2 set_primary_key($table)
 
 Set the primary key for the B<DbFramework::Table> object I<$table>.
+The catalog column B<c_table.labels> may contain a colon seperated
+list of column names to be used as 'labels' (see
+L<DbFramework::Primary/new()>.)
 
 =cut
 
@@ -166,11 +171,32 @@ sub set_primary_key {
   my $self           = attr shift;
   my $table          = shift;
   my $sth            = $self->_get_key_columns($table,'primary');
+  if ( $sth->rows == 0 ) {
+    $sth->finish;
+    carp "Can't get primary key for ",$table->name,"\n"
+  }
   my($name,$columns) = @{$sth->fetchrow_arrayref};
   $sth->finish;
   my @attributes = $table->get_attributes(split /:/,$columns);
-  my $pk         = new DbFramework::PrimaryKey(\@attributes);
-  $pk->belongs_to($table);   # reverse reference
+
+  # get label columns
+  my $table_name = $DBH->quote($table->name);
+  my $db_name    = $DBH->quote($table->belongs_to->db);
+  my $sql        = qq{
+SELECT labels
+FROM   c_table
+WHERE  db_name    = $db_name
+AND    table_name = $table_name
+};
+  print STDERR "$sql\n" if $_DEBUG;
+  $sth           = $DBH->prepare($sql) || die($DBH->errstr);
+  my $rv         = $sth->execute       || die($sth->errstr);
+  my($labels)    = $sth->fetchrow_array;
+  my $labels_ref = undef;
+  @$labels_ref   = split /:/,$labels if defined $labels && $labels ne '';
+  $sth->finish;
+  print STDERR "$table_name.pk: $columns\n" if $_DEBUG;
+  my $pk = new DbFramework::PrimaryKey(\@attributes,$table,$labels_ref);
   $table->is_identified_by($pk);
 }
 
@@ -214,7 +240,7 @@ sub set_foreign_keys {
   for my $table ( @{$dm->collects_table_l} ) {
     my $table_name = $DBH->quote($table->name);
     my $sql        = qq{
-SELECT key_name,key_columns,pk_table
+SELECT k.key_name,k.key_columns,r.pk_table
 FROM   c_relationship r, c_key k
 WHERE  r.db_name  = $db_name
 AND    r.fk_table = $table_name
@@ -261,8 +287,8 @@ AND    table_name = $table_name
 AND    key_type   = $keytypes{$key_type}
 };
   print STDERR "$sql\n" if $_DEBUG;
-  my $sth        = $DBH->prepare($sql) || die($DBH->errstr);
-  my $rv         = $sth->execute       || die($sth->errstr);
+  my $sth = $DBH->prepare($sql) || die($DBH->errstr);
+  my $rv  = $sth->execute       || die($sth->errstr);
   return $sth;
 }
 

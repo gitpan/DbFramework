@@ -1,5 +1,5 @@
-#!/usr/local/bin/eperl -I../.. -mc
-<?
+#!/usr/local/bin/perl -I../..
+
 =pod
 
 =head1 NAME
@@ -8,34 +8,39 @@ dbforms.cgi - Forms interface to DbFramework databases
 
 =head1 SYNOPSIS
 
-  http://foo/cgi_bin/dbforms.cgi?driver=mysql&db=foo
+  http://foo/cgi_bin/dbforms.cgi?db=foo&db_dsn=mysql:database=foo&c_dsn=mysql:database=dbframework_catalog
 
 =head1 DESCRIPTION
 
-B<dbforms.cgi> is a CGI script which presents a simple HTML forms
-interface to any database configured to work with B<DbFramework>.  Any
-database you wish to work with B<must> have the appropriate catalog
-entries in the catalog database before it will work with this script
-(see L<DbFramework::Catalog/"The Catalog">.)
+B<dbforms.cgi> presents a simple HTML forms interface to any database
+configured to work with B<DbFramework>.  The database B<must> have the
+appropriate catalog entries in the catalog database before it will
+work with this script (see L<DbFramework::Catalog/"The Catalog">.)
 
 =head2 Query string arguments
 
-The following arguments are supported in the query string.
+The following arguments are supported in the query string.  Mandatory
+arguments are shown in B<bold>.
 
 =over 4
 
-=item host
+=item B<db>
+
+The name of the database.
+
+=item B<db_dsn>
+
+The portion of the DBI DSN after 'DBI:' to be used to connect to the
+database e.g. 'mysql:database=foo'.
+
+=item B<c_dsn>
+
+The portion of the DBI DSN after 'DBI:' to be used to connect to the
+catalog database e.g. 'mysql:database=dbframework_catalog'.
+
+=item B<host>
 
 The host on which the database is located (default = 'localhost'.)
-
-=item driver
-
-The name of the DBI driver to use to connect to the database i.e. the
-bit after B<DBD::> (default = 'mysql'.)
-
-=item db
-
-The name of the database to work with.
 
 =back
 
@@ -55,71 +60,77 @@ under the same terms as Perl itself.
 
 =cut
 
-  use lib '../..';
-  use DbFramework::Util;
-  use DbFramework::Persistent;
-  use DbFramework::DataModel;
-  use DbFramework::Template;
-  use CGI qw/:standard/;
-  use URI::Escape;
+use lib '../..';
+use DbFramework::Util;
+use DbFramework::Persistent;
+use DbFramework::DataModel;
+use DbFramework::Template;
+use DbFramework::Catalog;
+use CGI qw/:standard/;
+use URI::Escape;
 
-  $cgi    = new CGI;
-  $db     = $cgi->param('db')      || die "No database specified";
-  $driver = $cgi->param('driver')  || 'mysql';
-  $host   = $cgi->param('host')    || undef;
-  $form   = $cgi->param('form')    || 'input';
-  $action = $cgi->param('action')  || 'select';
-  $dm     = new DbFramework::DataModel($db,"DBI:$driver:database=$db;host=$host");
-  $dm->dbh->{PrintError} = 0;  # ePerl chokes on STDERR
-  $dbh = $dm->dbh; $dbh->{PrintError} = 0;
-  $dm->init_db_metadata;
+$cgi    = new CGI;
+$db     = $cgi->param('db')      || die "No database specified";
+$db_dsn = $cgi->param('db_dsn')  || die "No database DBI string specified";
+$c_dsn  = $cgi->param('c_dsn')   || die "No catalog DBI string specified";
+$host   = $cgi->param('host')    || undef;
+$form   = $cgi->param('form')    || 'input';
+$action = $cgi->param('action')  || 'select';
+$dm     = new DbFramework::DataModel($db,"DBI:$db_dsn;host=$host");
+$dm->dbh->{PrintError} = 0;  # ePerl chokes on STDERR
+$dbh = $dm->dbh; $dbh->{PrintError} = 0;
+$dm->init_db_metadata("DBI:$c_dsn");
 
-  @tables = @{$dm->collects_table_l};
-  $class  = $table = $cgi->param('table') || $tables[0]->name;
-  $template = new DbFramework::Template(undef,\@tables);
-  $template->default($table);
+@tables = @{$dm->collects_table_l};
+$class  = $table = $cgi->param('table') || $tables[0]->name;
+$template = new DbFramework::Template(undef,\@tables);
+$template->default($table);
 
-  $code   = DbFramework::Persistent->make_class($class);
-  eval $code;
+$code = DbFramework::Persistent->make_class($class);
+eval $code;
 
-  package main;
-  ($t)   = $dm->collects_table_h_byname($table);
-  $thing = new $class($t,$dbh);
-  cgi_set_attributes($thing);
+package main;
+($t)     = $dm->collects_table_h_byname($table);
+$catalog = new DbFramework::Catalog("DBI:$c_dsn");
+$thing   = new $class($t,$dbh,$catalog);
+cgi_set_attributes($thing);
 
 #  unless ( $form eq 'input' ) {
 #    $thing->init_pk;
 #    $thing->table->read_form($form);
 #  }
 
-  # unpack composite column name parameters
-  for my $param ( $cgi->param ) {
-    if ( $param =~ /,/ ) {
-      my @columns = split /,/,$param;
-      my @values  = split /,/,$cgi->param($param);
-      for ( my $i = 0; $i <= $#columns; $i++ ) {
-	$cgi->param($columns[$i],$values[$i]);
-      }
+# unpack composite column name parameters
+for my $param ( $cgi->param ) {
+  if ( $param =~ /,/ ) {
+    my @columns = split /,/,$param;
+    my @values  = split /,/,$cgi->param($param);
+    for ( my $i = 0; $i <= $#columns; $i++ ) {
+      $cgi->param($columns[$i],$values[$i]);
     }
   }
-  sub cgi_set_attributes {
-    my $thing = shift;
-    my %attributes;
-    for ( $thing->table->attribute_names ) {
-      $attributes{$_} = $cgi->param($_) ne '' ? $cgi->param($_) : undef;
-    }
-    $thing->attributes_h([%attributes]);
-  }
+}
 
-  sub error {
-    my $message = shift;
-    print  "<font color=#ff0000><strong>ERROR!</strong><p>$message</font>\n";
+sub cgi_set_attributes {
+  my $thing = shift;
+  my %attributes;
+  for ( $thing->table->attribute_names ) {
+    $attributes{$_} = $cgi->param($_) ne '' ? $cgi->param($_) : undef;
   }
-!>
+  $thing->attributes_h([%attributes]);
+}
+
+sub error {
+  my $message = shift;
+  print  "<font color=#ff0000><strong>ERROR!</strong><p>$message</font>\n";
+}
+
+print $cgi->header;
+print <<EOF;
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
 <html>
   <head>
-    <title><? print "$db: $table" !></title>
+    <title>$db: $table</title>
   </head>
 
   <body>
@@ -129,19 +140,21 @@ under the same terms as Perl itself.
       <table>
         <tr>
           <td valign=top>
-          <h1>db: <?=$db!></h1>
+          <h1>db: $db</h1>
           </td>
         </tr>
         <tr>
           <td>
             <h4>Tables</h4>
             <ul>
-<?
-  for ( @{$dm->collects_table_l} ) {
-    my $table = $_->name;
-    print "<li><a href=",$cgi->url,"?driver=$driver&db=$db&host=$host&table=$table>$table</a>\n";
-  }
-!>
+EOF
+
+for ( @{$dm->collects_table_l} ) {
+  my $table = $_->name;
+  print "<li><a href=",$cgi->url,"?db=$db&driver=$driver&db_dsn=$db_dsn&c_dsn=$c_dsn&host=$host&table=$table>$table</a>\n";
+}
+
+print <<EOF;
             </ul>
           </td>
         </tr>
@@ -151,31 +164,38 @@ under the same terms as Perl itself.
         <table border=0>
         <tr>
           <td colspan=2 align=middle>
-            <h1><?=$table!></h1>
+            <h1>$table</h1>
           </td>
         </tr>
         <tr>
           <td>
-<? if ( $form eq 'input' ) { _!>
-            <form method=post action=<? print $cgi->self_url !>>
-<?
-	    for ( qw(host driver db table form) ) {
-	      print "<input type=hidden name=$_ value=",$$_,">\n";
-	    }
-            print $thing->table->as_html_heading;
-!>
-            <tr>
-	      <?print $template->fill($thing->table_qualified_attribute_hashref)!>
-              <td><input type=radio name=action value=select <?print 'checked' if $action eq 'select'!>> select</td>
-              <td><input type=radio name=action value=insert <?print 'checked' if $action eq 'insert'!>> insert</td>
-              <td><input type=submit value="Submit"></td>
-             </form>
-<? } !>
-            </tr>
-          </td>
-        </tr>
+EOF
 
-<?
+if ( $form eq 'input' ) {
+  my $self_url = $cgi->self_url;
+  print "<form method=post action=$self_url>\n";
+  for ( qw(host driver db db_dsn c_dsn table form) ) {
+    print "<input type=hidden name=$_ value=",$$_,">\n";
+  }
+  my $values_hashref = $thing->table_qualified_attribute_hashref;
+  print $thing->table->as_html_heading,"\n<tr>\n";
+  print $template->fill($values_hashref);
+  for ( 'select','insert' ) {
+    print "<td><input type=radio name=action value=$_";
+    print ' checked' if /^$action$/;
+    print "> $_</td>\n";
+  }
+print <<EOF;
+  <td><input type=submit value="Submit"></td>
+  </form>
+EOF
+}
+print <<EOF;
+  </tr>
+  </td>
+  </tr>
+EOF
+
 my $action = $cgi->param('action') || '';
 
 SWITCH: {
@@ -200,20 +220,17 @@ SWITCH: {
 	if ( @things ) {
 	  for my $thing ( @things ) {
 	    my %attributes = %{$thing->attributes_h};
-	    my $url = $cgi->url . "?db=$db&host=$host&table=$table&form=$form&action=update";
+	    my $url = $cgi->url . "?db=$db&db_dsn=$db_dsn&c_dsn=$c_dsn&host=$host&table=$table&form=$form&action=update";
 	    for ( keys(%attributes) ) {
-	      #print STDERR "$_ = $attributes{$_}\n";
 	      $url .= uri_escape("&$_=$attributes{$_}");
 	    }
 	    # fill template
 	    my $values_hashref = $thing->attributes_h;
-	    
-	    $DEBUG = 0;
-	    print STDERR $thing->table->template_h_byname($form) if $DEBUG;
 	    print "<form method=post action=",$cgi->self_url,">\n";
-	    for ( qw(host driver db table form) ) {
+	    for ( qw(host driver db db_dsn c_dsn table form) ) {
 	      print "<input type=hidden name=$_ value=",$$_,">\n";
 	    }
+	    print $thing->table->is_identified_by->as_hidden_html($values_hashref);
 	    print "<TR>",$template->fill($thing->table_qualified_attribute_hashref),"\n";
 	    print "<td><input type=radio name=action value=update",($action eq 'select') ? ' checked>' : '',"update</td>\n";
 	    print "<td><input type=radio name=action value=delete>",($action eq 'delete') ? ' checked' : '',"delete</td>\n";
@@ -227,17 +244,28 @@ SWITCH: {
     };
   $action =~ /^(insert|update|delete)$/ &&
     do {
+      my %attributes;
+      if ( $action =~ /update/ ) {
+	# make update condition from current pk
+	for my $param ( $cgi->param ) {
+	  if ( my($pk_column) = $param =~ /^pk_(\w+)$/ ) {
+	    $attributes{$pk_column} = $cgi->param($param);
+	  }
+	}
+      }
       cgi_set_attributes($thing);
-      eval { $thing->$action() };
+      eval { $thing->$action(\%attributes); };
       error($@) if $@;
     }
 }
-  $dm->dbh->disconnect;
-  $dbh->disconnect;
-!>
+$dm->dbh->disconnect;
+$dbh->disconnect;
+
+print <<EOF;
      </table>
     </td>
   </tr>
 </table>
 </body>
 </html>
+EOF

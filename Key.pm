@@ -5,7 +5,7 @@ DbFramework::Key - Key class
 =head1 SYNOPSIS
 
   use DbFramework::Key;
-  $k = new DbFramework::Key($name,\@attributes);
+  $k     = new DbFramework::Key($name,\@attributes);
   $name  = $k->name($name);
   @a     = @{$k->incorporates_l(\@attributes)};
   @names = $k->attribute_names;

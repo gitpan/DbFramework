@@ -5,11 +5,12 @@ DbFramework::DataType::Mysql - Mysql data type class
 =head1 SYNOPSIS
 
   use DbFramework::DataType::Mysql;
-  $dt     = new DbFramework::DataType::ANSII($dbh,$type,$length);
+  $dt     = new DbFramework::DataType::ANSII($dm,$type,$ansii_type,$length);
   $name   = $dt->name($name);
   $type   = $dt->type($type);
   $length = $dt->length($length);
   $extra  = $dt->extra($extra);
+  $ansii  = $dt->ansii_type;
 
 =head1 DESCRIPTION
 
@@ -34,6 +35,7 @@ my %fields = (
 	      EXTRA   => undef,
 	      TYPES_L => undef,
 	      TYPE    => undef,
+	      ANSII_TYPE => undef,
 	     );
 
 ##-----------------------------------------------------------------------------
@@ -42,15 +44,16 @@ my %fields = (
 
 =head1 CLASS METHODS
 
-=head2 new($dbh,$type,$length,$extra)
+=head2 new($dm,$type,$ansii_type,$length,$extra)
 
-Create a new B<DbFramework::DataType> object.  I<$dbh> is a B<DBI>
-database handle.  I<$type> is a numeric Mysql type e.g. a type
-containd in the array reference returned by $sth->{mysql_type}.  This
-method will die() unless I<$type> is a member of the set of Mysql
-types returned by I<$dbh>.  I<$length> is the length of the data type.
-I<$extra> is any extra stuff which applies to the type
-e.g. 'AUTO_INCREMENT'.
+Create a new B<DbFramework::DataType> object.  I<$dm> is a
+B<DbFramework::DataModle> object.  I<$type> is a numeric Mysql type
+e.g. a type containd in the array reference returned by
+$sth->{mysql_type}.  This method will die() unless I<$type> is a
+member of the set of types supported by B<DBD::mysql>.  I<$ansii_type>
+is the ANSII type that most closely resembles the native Mysql type.
+I<$length> is the length of the data type.  I<$extra> is any extra
+stuff which applies to the type e.g. 'AUTO_INCREMENT'.
 
 =cut
 
@@ -58,10 +61,10 @@ sub new {
   my $_debug = 0;
   my $proto = shift;
   my $class = ref($proto) || $proto;
-  my($dbh,$type) = (shift,shift);
+  my($dm,$type,$ansii_type) = (shift,shift,shift);
 
   my(@types,@type_names);
-  for my $t ( $dbh->type_info($DBI::SQL_ALL_TYPES) ) {
+  for my $t ( @{$dm->type_info_l} ) {
     $types[$t->{mysql_native_type}] = $t;
     $type_names[$t->{mysql_native_type}] = uc($t->{TYPE_NAME});
     print STDERR "$t->{mysql_native_type}, $type_names[$t->{mysql_native_type}]\n" if $_debug
@@ -76,6 +79,7 @@ sub new {
   @{$self}{keys %fields} = values %fields;
 
   $self->type($type);
+  $self->ansii_type($ansii_type);
   $self->types_l(\@types);
   $self->length(shift);
   $self->extra(shift);
@@ -96,6 +100,12 @@ the name of the data type.
 
 If I<$type> is supplied sets the number of the Mysql data type.
 Returns the numeric data type.
+
+=head2 ansii_type($ansii_type)
+
+If I<$ansii_type> is supplied sets the number of the ANSII type which
+most closely corresponds to the Mysql native type.  Returns the ANSII
+type which most closely corresponds to the Mysql native type.
 
 =head2 length($length)
 

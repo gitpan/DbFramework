@@ -7,7 +7,7 @@ DbFramework::Table - Table class
   use DbFramework::Table;
 
   $t    = new DbFramework::Table new($name,\@attributes,$pk,$dbh,$dm);
-  $t->init_db_metadata;
+  $t->init_db_metadata($catalog);
   $dbh  = $t->dbh($dbh);
   $pk   = $t->is_identified_by($pk);
   @fks  = @{$t->has_foreign_keys_l};
@@ -25,7 +25,7 @@ DbFramework::Table - Table class
   @loh  = $t->select_loh(\@columns,$conditions,$order);
   @a    = $t->non_key_attributes;
   $dm   = $t->belongs_to;
-  do_something if $t->in_foreign_key($attribute);
+  @fks  = $t->in_foreign_key($attribute);
   do_something if $t->in_key($attribute);
   do_something if $t->in_primary_key($attribute);
   do_something if $t->in_any_key($attribute);
@@ -191,19 +191,22 @@ sub as_html_form {
 
 =head2 in_foreign_key($attribute)
 
-I<$attribute> is a B<DbFramework::Attribute> object.  Returns true if
-I<$attribute> is a part of any foreign key in the table.
+I<$attribute> is a B<DbFramework::Attribute> object.  Returns a list
+of B<DbFramework::ForeignKey> objects which contain I<$attribute>.
+
 
 =cut
 
 sub in_foreign_key {
   my($self,$attribute) = (attr shift,shift);
   my $name = $attribute->name;
-  my @fk_names = ();
+  my @in = ();
   print STDERR "foreign keys: @HAS_FOREIGN_KEYS_L\n" if $_DEBUG;
-  for ( @HAS_FOREIGN_KEYS_L ) { push(@fk_names,$_->attribute_names) }
-  print STDERR "Looking for $name in @fk_names\n" if $_DEBUG;
-  return grep(/^$name$/,@fk_names) ? 1 : 0;
+  for ( @HAS_FOREIGN_KEYS_L ) {
+    my @fk_names = $_->attribute_names;
+    push @in,$_ if grep(/^$name$/,@fk_names);
+  }
+  return @in;
 }
 
 #------------------------------------------------------------------------------
@@ -308,15 +311,17 @@ sub as_string {
 
 ##-----------------------------------------------------------------------------
 
-=head2 init_db_metadata()
+=head2 init_db_metadata($catalog)
 
 Returns an initialised B<DbFramework::Table> object for the table
 matching this object's name() in the database referenced by dbh().
+I<$catalog> is a B<DbFramework::Catalog> object.
 
 =cut
 
 sub init_db_metadata {
   my $self  = attr shift;
+  my $catalog = shift;
 
   my($sql,$sth,$rows,$rv);
   # query to get typeinfo
@@ -326,8 +331,8 @@ sub init_db_metadata {
     # more efficient query for getting typeinfo but not supported by mSQL
     $sql   = qq{SELECT * FROM $NAME WHERE 1 = 0};
   }
-  $sth   = $DBH->prepare($sql) || die($DBH->errstr);
-  $rv    = $sth->execute       || die($sth->errstr);
+  $sth = $DBH->prepare($sql) || die($DBH->errstr);
+  $rv  = $sth->execute       || die($sth->errstr);
   
   my %datatypes = ( mysql => 'Mysql' ); # driver-specific datatype classes
   my @columns;
@@ -341,12 +346,13 @@ sub init_db_metadata {
     
     my $name = $sth->{NAME}->[$i];
   # if driver-specific class exists, get the driver-specific type
-    my($type,$default,$extra);
+    my($type,$ansii_type,$default,$extra);
   SWITCH: for ( $class ) {
     /Mysql/ && do {
       print STDERR "mysql_type = ",join(',',@{$sth->{mysql_type}}),"\n"
 	if $_DEBUG;
       $type = $sth->{mysql_type}->[$i];
+      $ansii_type = $sth->{TYPE}->[$i];
       my $sth = DbFramework::Util::do_sql($DBH,"DESCRIBE $NAME $name");
       my $metadata = $sth->fetchrow_hashref;
       ($default,$extra) = ($metadata->{Default},uc($metadata->{Extra}));
@@ -354,13 +360,14 @@ sub init_db_metadata {
       last SWITCH;
     };
     /ANSII/ && do {
-      $type = $sth->{TYPE}->[$i];
+      $ansii_type = $type = $sth->{TYPE}->[$i];
       last SWITCH;
     };
   }
     $class = "DbFramework::DataType::$class";
-    my $d = $class->new($DBH,
+    my $d = $class->new($self->belongs_to,
 			$type,
+			$ansii_type,
 			$sth->{PRECISION}->[$i],
 			$extra,
 		       );
@@ -374,9 +381,8 @@ sub init_db_metadata {
   $self->_init(\@columns);
 
   ## add keys
-  my $c = new DbFramework::Catalog("DBI:mysql:database=$DbFramework::Catalog::db");
-  $c->set_primary_key($self);
-  $c->set_keys($self);
+  $catalog->set_primary_key($self);
+  $catalog->set_keys($self);
 
   #$self->_templates;  # set default templates
 
@@ -468,9 +474,9 @@ sub insert {
   for ( keys(%values) ) {
     next unless defined($values{$_});
     push(@columns,$_);
-    my $type = $self->get_attributes($_)->references->type;
+    my $type = $self->get_attributes($_)->references->ansii_type;
     print STDERR "value = $values{$_}, type = $type\n" if $_DEBUG;
-    $values .= $DBH->quote($values{$_},$type) . ',';
+    $values .= $self->_quote($values{$_},$type) . ',';
   }
   chop $values;
   my $columns = '(' . join(',',@columns). ')';
@@ -507,8 +513,10 @@ sub update {
   my $values;
   for ( keys %values ) {
     next unless $values{$_};
-    my $type = $self->get_attributes($_)->references->type;
-    $values .= "$_ = " . $DBH->quote($values{$_},$type) . ',';
+    my $dt   = $self->get_attributes($_)->references;
+    my $type = $dt->ansii_type;
+    print STDERR "\$type = ",$dt->name,"($type)\n" if $_DEBUG;
+    $values .= "$_ = " . $self->_quote($values{$_},$type) . ',';
   }
   chop $values;
   
@@ -846,6 +854,16 @@ sub _join_fill_template {
     $html .= $table->fill_template($template,$hashref);
   }
   $html;
+}
+
+#------------------------------------------------------------------------------
+
+# workaround for lack of quoting in dates
+# Jochen says it will be fixed in later releases of DBD::mysql
+sub _quote {
+  my($self,$value,$type) = @_;
+  $type = 12 if $type == 9;
+  return $self->dbh->quote($value,$type);
 }
 
 =head1 SEE ALSO

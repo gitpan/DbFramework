@@ -8,11 +8,11 @@ DbFramework::Persistent - Persistent Perl object base class
   use base qw(DbFramework::Persistent);
 
   package main;
-  $foo = new Foo($table,$dbh);
+  $foo = new Foo($table,$dbh,$catalog);
   $foo->attributes_h(\%foo};
   $foo->insert;
   $foo->attributes_h(\%new_foo);
-  $foo->update;
+  $foo->update(\%attributes);
   $foo->delete;
   $foo->init_pk;
   @foo     = $foo->select($condition,$order);
@@ -33,8 +33,8 @@ B<DbFramework::Util>
 
 package DbFramework::Persistent;
 use strict;
-use vars qw( $TABLE $_DEBUG $VERSION %ATTRIBUTES_H );
-$VERSION = '1.08';
+use vars qw( $TABLE $_DEBUG $VERSION %ATTRIBUTES_H $CATALOG );
+$VERSION = '1.09';
 use base qw(DbFramework::Util);
 use Alias;
 use DbFramework::Table;
@@ -46,6 +46,7 @@ my $Debugging = 0;
 my %fields = (
 	      TABLE        => undef,
 	      ATTRIBUTES_H => undef,
+	      CATALOG      => undef,
 );
 
 ##-----------------------------------------------------------------------------
@@ -54,23 +55,24 @@ my %fields = (
 
 =head1 CLASS METHODS
 
-=head2 new($table,$dbh)
+=head2 new($table,$dbh,$catalog)
 
 Create a new persistent object. I<$table> is a B<DbFramework::Table>
 object or the name of a database table.  I<$dbh> is a B<DBI> database
 handle which refers to a database containing a table associated with
-I<$table>.
+I<$table>.  I<$catalog> is a B<DbFramework::Catalog> object.
 
 =cut
 
 sub new {
   my $proto = shift;
   my $class = ref($proto) || $proto;
-  my($table,$dbh) = @_;
+  my($table,$dbh,$catalog) = @_;
   my $self = bless { _PERMITTED => \%fields, %fields, }, $class;
   $table = new DbFramework::Table($table,undef,undef,$dbh)
     unless (ref($table) eq 'DbFramework::Table');
-  $self->table($table->init_db_metadata);
+  $self->table($table->init_db_metadata($catalog));
+  $self->catalog($catalog);
   return $self;
 }
 
@@ -87,13 +89,10 @@ sub make_class {
   my($proto,$name) = @_;
   my $class = ref($proto) || $proto;
 
-  my $code = "package $name;\n";
-  $code .= <<'EOF';
+  my $code = qq{package $name;
 use strict;
 use base qw(DbFramework::Persistent);
-EOF
-
-  return $code;
+};
 }
 
 ##-----------------------------------------------------------------------------
@@ -136,16 +135,27 @@ sub insert {
 
 #------------------------------------------------------------------------------
 
-=head2 update()
+=head2 update(\%attributes)
 
-Update this object in the associated table.  Returns the number of
-rows updated if supplied by the DBI driver.
+Update this object in the associated table.  I<%attributes> is a hash
+whose keys contain primary key column names and whose values will be
+concatenated with 'ANDs' to form a SQL 'WHERE' clause.  The default
+values of I<%attributes> is the hash returned by attributes_h().  Pass
+the B<current> primary key attributes as an argument in I<%attributes>
+when you need to update one or more primary key columns.  Returns the
+number of rows updated if supplied by the DBI driver.
 
 =cut
 
 sub update {
   my $self = attr shift;
-  return $TABLE->update($self->attributes_h,$self->_pk_conditions);
+  my %attributes = defined($_[0]) ? %{$_[0]} : %{$self->attributes_h};
+  # get pk attributes
+  my %pk_attributes;
+  for ( $TABLE->is_identified_by->attribute_names ) {
+    $pk_attributes{$_} = $attributes{$_};
+  }
+  return $TABLE->update($self->attributes_h,$self->where_and(\%pk_attributes));
 }
 
 #------------------------------------------------------------------------------
@@ -168,7 +178,7 @@ sub select {
   for ( $TABLE->select(\@columns,shift,shift) ) {
     print STDERR "\@{\$_} = @{$_}\n" if $_DEBUG;
     # pass Table *object* to new to retain any fk relationships
-    my $thing = $self->new($TABLE,$TABLE->dbh);
+    my $thing = $self->new($TABLE,$TABLE->dbh,$CATALOG);
     my %attributes;
     for ( my $i = 0; $i <= $#columns; $i++ ) {
       print STDERR "assigning $columns[$i] = $_->[$i]\n" if $_DEBUG;
@@ -211,16 +221,34 @@ sub select {
 ##-----------------------------------------------------------------------------
 
 # return a SQL 'WHERE' clause condition consisting of primary key
-# attributes and their corresponding values (from the object) joined
-# by 'AND'
- 
+# attributes and their corresponding values joined by 'AND'
+
 sub _pk_conditions {
-  my $self = attr shift;
-  my %attributes = %{$self->attributes_h};
+  my $self       = attr shift;
+  my @attributes = @{$TABLE->is_identified_by->incorporates_l};
+  my %values     = %{$self->attributes_h};
+  my %pk_attributes;
+  for ( @attributes ) {
+    my $column = $_->name;
+    $pk_attributes{$column} = $values{$column};
+  }
+  return $self->where_and(\%pk_attributes);
+}
+
+##-----------------------------------------------------------------------------
+
+# return a SQL 'WHERE' clause condition consisting of attributes named
+# after keys in %attributes and their corresponding values joined by
+# 'AND'
+ 
+sub where_and {
+  my $self       = attr shift;
+  my %attributes = %{$_[0]};
   my $conditions;
-  for ( @{$TABLE->is_identified_by->incorporates_l} ) {
+  for ( keys %attributes ) {
+    my($attribute) = $TABLE->get_attributes($_);
     $conditions .= ' AND ' if $conditions;
-    my($name,$type) = ($_->name,$_->references->type);
+    my($name,$type) = ($attribute->name,$attribute->references->type);
     $conditions .= "$name = " . $TABLE->dbh->quote($attributes{$name},$type);
   }
   print STDERR "$conditions\n" if $_DEBUG;

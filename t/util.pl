@@ -1,3 +1,4 @@
+
 sub drop_create {
   my($db,$table,$c,$sql,$dbh) = @_;
   my $rv = $dbh->do("DROP TABLE $table");
@@ -28,5 +29,48 @@ sub do_sql {
   my $rv  = $sth->execute       || die($sth->errstr);
   return $sth;
 }  
+
+sub connect_args($$) {
+  my %driver      = %t::Config::driver;
+  my($driver,$db) = @_;
+  my $catalog_db  = $DbFramework::Catalog::db;
+  my($db_name,$dsn,$u,$p);
+
+ SWITCH: {
+    ($db eq 'catalog') && do {
+      $db_name  = $catalog_db;
+    };
+    ($db eq 'test') && do {
+      delete $driver{$driver}->{$catalog_db};
+      ($db_name) = keys %{$driver{$driver}};
+    };
+  }
+  $dsn = $driver{$driver}->{$db_name}->{dsn};
+  $u   = $driver{$driver}->{$db_name}->{u};
+  $p   = $driver{$driver}->{$db_name}->{p};
+  return($db_name,$dsn,$u,$p);
+}
+
+sub yn($$) {
+  my($prompt,$default) = @_;
+  if ( $default ) {
+    $answer = 'Y'; $prompt .= ': (Y/n) ';
+  } else {
+    $answer = 'N'; $prompt .= ': (y/N) ';
+  }
+  my $in = '';
+  while ( 1 ) {
+    print $prompt;
+    $in = <>;
+    last if $in =~ /^\n$/;
+    chop $in;
+    $in = uc($in);
+    if ( $in =~ /^(Y|N)$/ ) {
+      $answer = $in;
+      last;
+    }
+  }
+  return ($answer eq 'Y') ? 1 : 0;
+}
 
 1;

@@ -149,7 +149,7 @@ SWITCH: {
       };
     $type =~ /CHAR$/ &&
       do {
-	$html = qq{<INPUT NAME="$NAME" VALUE="$value" SIZE=30 TYPE="text" MAXLENGTH=$length>};
+	$html = qq{<INPUT NAME="$NAME" VALUE='$value' SIZE=30 TYPE="text" MAXLENGTH=$length>};
 	last SWITCH;
       };
     $type eq 'TEXT' &&
@@ -167,7 +167,7 @@ SWITCH: {
 	};
       # default
       my $size = ($length < 30) ? $length : 30;
-      $html    = qq{<INPUT MAXLENGTH=$size NAME="$NAME" VALUE="$value" SIZE=$size TYPE="text">};
+      $html    = qq{<INPUT MAXLENGTH=$size NAME='$NAME' VALUE='$value' SIZE=$size TYPE="text">};
     }
   return $html;
 }

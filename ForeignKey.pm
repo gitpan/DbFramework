@@ -9,6 +9,7 @@ DbFramework::ForeignKey - Foreign Key class
   $pk   = $fk->references($primary);
   $sql  = $fk->as_sql;
   $html = $fk->as_html_form_field(\%values);
+  $s    = $fk->sql_where;
 
 =head1 DESCRIPTION
 
@@ -116,14 +117,38 @@ sub as_html_form_field {
   my $self      = attr shift;
   my %values    = $_[0] ? %{$_[0]} : ();
   my $pk        = $self->references;
-#  my @fk_values = @values{$self->attribute_names}; # hash slice
   my $name      = join(',',$self->attribute_names);
   # only handles single attribute foreign keys
   my $t_name    = $BELONGS_TO->name;
   my @fk_value;
   $fk_value[0] = $values{"${t_name}.${name}"};
-  #print STDERR "\$t_name = $t_name, \$name = $name, \@fk_value = @fk_value\n";
+  if ( $_DEBUG ) {
+    print STDERR "\$t_name = $t_name, \$name = $name, \@fk_value = @fk_value\n";
+    print STDERR "pk table = ",$pk->belongs_to->name,"\n";
+  }
   $pk->html_select_field(undef,undef,\@fk_value,$name);
+}
+#------------------------------------------------------------------------------
+
+=head2 sql_where()
+
+Returns a string containing SQL 'WHERE' condition(s) to join the
+foreign key against the primary key of the related table.
+
+=cut
+
+sub sql_where {
+  my $self = shift;
+  my $fk_table   = $self->belongs_to->name;
+  my @fk_columns = $self->attribute_names;
+  my $pk_table   = $self->references->belongs_to->name;
+  my @pk_columns = $self->references->attribute_names;
+  my $where;
+  for ( my $i = 0; $i <= $#fk_columns; $i++ ) {
+    $where .= ' AND ' if $where;
+    $where .= "$fk_table.$fk_columns[$i] = $pk_table.$pk_columns[$i]";
+  }
+  $where;
 }
 
 1;

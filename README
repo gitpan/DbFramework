@@ -17,10 +17,12 @@ Prerequisites
   Perl 5.005
   Alias
   CGI
+  URI::Escape
   DBI 1.06 or later
-  Msql-Mysql-modules-1.21_15 or later
   Text::FillIn
-  ePerl (for dbforms.cgi)
+  Term::ReadKey
+
+  ** Msql-Mysql-modules-1.21_15 or later (if you want to use Mysql or mSQL) **
 
 Installation
 ============
@@ -41,23 +43,78 @@ forms/dbforms.cgi'.
 DbFramework has been successfully built and tested on (at least) the
 following configurations:
 
-	   RedHat Linux 5.1
-		Mysql 3.22.14-gamma
-		Msql 2.0.8
+	RedHat Linux 5.1
+	Mysql 3.22.14-gamma
+	Msql 2.0.8
 
 
 History
 =======
 
-1-04-1999                   Paul Sharpe                  <paul@miraclefish.com>
--------------------------------------------------------------------------------
+30-04-1999               Paul Sharpe          <paul@miraclefish.com>
+--------------------------------------------------------------------
+RELEASE 1.09
+
+dbforms.cgi
+  - Can now update primary keys.
+  - Removed dependency on ePerl.
+  - Now takes dsn arguments to cater for variance between DBDs.
+
+INTERFACE CHANGES
+  Catalog::
+    - set_primary_key() now sets labels if defined in the catalog.
+  DataModel::
+    - New method dsn().
+    - new() now requires name to be the database name as pattern match
+      to get database name forgot that this part of a DBI DSN is *non
+      standard*
+    - init_db_metadata() now requires DSN for catalog as it varies
+      between drivers.  Also now allows username/password for authentication
+      against catalog database.
+  ForeignKey::
+    - New method sql_where().
+  Makefile.PL
+    - Moved most of the catalog initialisation here.
+    - Manual creation of databases now required as there's no standard
+      for creating databases.  Each driver can use an arbitrarily named
+      database for testing.
+  Persistent::
+    - new() now requires a Catalog object.
+    - update now takes %attributes argument so that a primary key can be
+      updated.  The current object state is used to update the row WHERE the
+      primary key matches the values in %attributes.
+  PrimaryKey::
+    - html_select_field() now has 'Any' *and* 'NULL' entries.  I have a
+      feeling this still isn't quite right.
+    - New method as_hidden_html()
+    - Signature to new() has changed now that label columns are
+      supported by the catalog.
+    - html_select_field() now follows label columns which are foreign
+      keys back to their associated primary key table and uses the label
+      columns from that table.  This gives more meaningful select fields.
+  Table::
+    - init_db_metadata() now requires catalog object argument.  This
+      should improve performance as a new catalog object (which involves a
+      database connect()) won't be created every time this method is called.
+    - in_foreign_key() now returns a list of foreign keys containing
+      $attribute
+  DataType::ANSII::
+    - Signature to new() has changed.  Now requires $ansii_type
+      argument.  All data type objects will need to return their closest
+      ANSII types as this is the $type which needs to be supplied to
+      $dbh->quote($value,$type).
+    - New method ansii_type().
+
+1-04-1999               Paul Sharpe           <paul@miraclefish.com>
+--------------------------------------------------------------------
 RELEASE 1.08
 
 BUG FIX
-  - Test database wasn't being created which was causing tests to fail.
+  - Test database wasn't being created which was causing tests to
+    fail.
 
-28-03-1999                  Paul Sharpe                  <paul@miraclefish.com>
--------------------------------------------------------------------------------
+28-03-1999              Paul Sharpe           <paul@miraclefish.com>
+--------------------------------------------------------------------
 RELEASE 1.07
 
 Highlights
@@ -233,9 +290,13 @@ RELEASE 1.01 (FIRST PUBLIC RELEASE)
 
 To do
 =====
-* Tue Jan 12, 1999
-  BUG - dbforms.cgi/Persistent.pm can't update columns in the pk e.g. where an
-        attribute in the pk is a fk
+
+* BUG: dbforms.cgi delete on row consisting of all foreign keys silently fails.
+
+* Improve dbforms.cgi interface.  Perhaps a rename is in order too.
+I'm thinking of having a single record interface with record
+navigation.  The form can then be designed and specified as an
+argument.
 
 * Fri Jan 8, 1999
   BUG - >1 fk relating to the same pk table in a single table is not

@@ -8,9 +8,9 @@ DbFramework::DataModel - Data Model class
   $dm = new DbFramework::DataModel($name,$db,$host,$port,$user,$pass);
   $dm->init_db_metadata;
   @tables = @{$dm->collects_table_l};
-  %tables = %{$db->collects_table_h};
-  @tables = @$db->collects_table_h_byname(@tables);
-  $sql    = $db->as_sql;
+  %tables = %{$dm->collects_table_h};
+  @tables = @{$dm->collects_table_h_byname(@tables)};
+  $sql    = $dm->as_sql;
 
 =head1 DESCRIPTION
 
@@ -149,19 +149,22 @@ sub init_db_metadata {
     while ( @row = $sth->fetchrow_array ) { push(@{$keys{$row[2]}},$row[4]) }
     for ( keys(%keys) ) {
       if ( $_ =~ /^f_/i ) {              # foreign key
-	my($pk_table_name) = $_ =~ /^f_(.*)$/;
-	print STDERR "table = $table_name, \$pk_table_name = $pk_table_name\n" if $_DEBUG;
+	my($pk_table_name,$number) = $_ =~ /^f_(\D+)(\d?)\D*$/;
+	print STDERR "table = $table_name, \$number = $number, \$pk_table_name = $pk_table_name\n" if $_DEBUG;
 	my($pk_table) = $self->collects_table_h_byname($pk_table_name);
 	die "Can't find table '$pk_table_name' while processing foreign key '$_' in table '$table_name'" if $pk_table eq '';
 	my @fk_attributes = $table->get_attributes(@{$keys{$_}});
-	my $fk = new DbFramework::ForeignKey($pk_table_name,\@fk_attributes,
+	my $fk_name;
+	for ( @fk_attributes ) { $fk_name .= $_->name . '_' }
+	chop($fk_name);
+	my $fk = new DbFramework::ForeignKey($fk_name,\@fk_attributes,
 					     $pk_table->is_identified_by
 					    );
 
 	$fk->belongs_to($table);
-	$table->has_foreign_keys_l_add($fk);                     # by number
-	$table->has_foreign_keys_h_add({$pk_table_name => $fk}); # by name
-	$pk_table->is_identified_by->incorporates($fk);          # pk ref
+	$table->has_foreign_keys_l_add($fk);                # by number
+	$table->has_foreign_keys_h_add({$fk->name => $fk}); # by name
+	$pk_table->is_identified_by->incorporates($fk);     # pk ref
       }
     }
     $table->validate_foreign_keys;

@@ -33,7 +33,8 @@ my %fields = (
               LENGTH => undef,
 	      EXTRA  => undef,
 	     );
-my @types  = qw/CHAR DATE DATETIME INT INTEGER TEXT TIMESTAMP VARCHAR/;
+my @types  = qw/CHAR DATE DATETIME INT INTEGER TEXT TIMESTAMP VARCHAR
+                DOUBLE LONGBLOB FLOAT/;
 
 ##-----------------------------------------------------------------------------
 ## CLASS METHODS

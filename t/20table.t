@@ -108,8 +108,8 @@ ok($t2->as_sql,$create_sql);
 
 # table as html
 $text = <<EOF;
-<INPUT NAME="song_id" VALUE="" SIZE=10 TYPE="text">
-<INPUT NAME="song_name" VALUE="" SIZE=30 TYPE="text" MAXLENGTH=127>
+<tr><td><INPUT NAME="song_id" VALUE="" SIZE=10 TYPE="text"></td></tr>
+<tr><td><INPUT NAME="song_name" VALUE="" SIZE=30 TYPE="text" MAXLENGTH=127></td></tr>
 EOF
 ok($t->as_html_form,$text);
 ok($t2->as_html_form,$text);
@@ -140,15 +140,15 @@ ok($dm->collects_table_h_byname('composition')->is_identified_by->as_sql,"PRIMAR
 
 # foreign keys
 $t = $dm->collects_table_h_byname('label');
-ok($t->is_identified_by->incorporates->name,'label');
+ok($t->is_identified_by->incorporates->name,'lbl_id');
 $t = $dm->collects_table_h_byname('song');
-ok($t->is_identified_by->incorporates->name,'song');
+ok($t->is_identified_by->incorporates->name,'song_id');
 $t = $dm->collects_table_h_byname('artist');
-ok($t->is_identified_by->incorporates->name,'artist');
+ok($t->is_identified_by->incorporates->name,'art_id');
 
 $t = $dm->collects_table_h_byname('composition');
-ok($t->has_foreign_keys_h_byname('song')->name,'song');
-ok($t->has_foreign_keys_h_byname('artist')->name,'artist');
+ok($t->has_foreign_keys_h_byname('song_id')->name,'song_id');
+ok($t->has_foreign_keys_h_byname('art_id')->name,'art_id');
 
 $t = $dm->collects_table_h_byname('release');
 
@@ -158,7 +158,7 @@ my @keys = keys(%fk);
 ok(scalar(@fk),scalar(@keys));
 @fk = $dm->collects_table_h_byname('label')->is_identified_by->incorporates;
 ok(scalar(@fk),scalar(@keys));
-ok($fk[0],$fk{'label'});
+ok($fk[0],$fk{'lbl_id'});
 
 $t = $dm->collects_table_h_byname('song');
 

@@ -5,8 +5,10 @@ DbFramework::Table - Table class
 =head1 SYNOPSIS
 
   use DbFramework::Table;
-  $t = new DbFramework::Table($name,,,$dbh,\%templates);
+
+  $t = new DbFramework::Table($name,,,$dbh,\@forms);
   $t->init_db_metadata;
+  $dbh = $t->dbh($dbh);
   $pk   = $t->is_identified_by($pk);
   @fks  = @{$t->has_foreign_keys_l};
   @keys = @{$t->is_accessed_using_l};
@@ -26,10 +28,35 @@ DbFramework::Table - Table class
   do_something if $t->in_primary_key($attribute);
   do_something if $t->in_any_key($attribute);
   @a = $t->non_key_attributes;
+  $t->read_form($form,$dir);
 
 =head1 DESCRIPTION
 
-A B<DbFramework::Table> object represents n database table (entity).
+A B<DbFramework::Table> object represents a database table (entity).
+
+=head2 Forms and Templates
+
+A table can have a number of associated forms.  Each form defines a
+number of templates which can be used for data entry or display.
+Forms associated with a table can be configured when calling new()
+and/or by including the Perl code
+
+C<$self-E<gt>form_h([form =E<gt> 'formfile' ...]);>
+
+in the file F</usr/local/etc/dbframework/forms/$db/$table/config.pl>.
+B<form> is a name used to identify the form and B<formfile> is the
+name of the file containing the form definition.
+
+Form files should be place in
+F</usr/local/etc/dbframework/forms/$db/$table>.  They should contain a
+list of (B<template name>,B<template>) pairs, where B<template name>
+is a name used to identify the template and B<template> is an HTML
+template.  Templates can be initialised by reading form files with the
+read_form() method.  The special tags which can be used in a template
+are described in the fill_template() method.
+
+All lines in F<config.pl> and I<formfile> matching the regular
+expression B</^\s*#/> will be treated as comments and ignored.
 
 =head1 SUPERCLASSES
 
@@ -42,7 +69,7 @@ B<DbFramework::DataModelObject>
 package DbFramework::Table;
 use strict;
 use vars qw( $NAME @CONTAINS_L $IS_IDENTIFIED_BY $_DEBUG @IS_ACCESSED_USING_L
-	     @HAS_FOREIGN_KEYS_L $DBH %TEMPLATE_H @CGI_PK );
+	     @HAS_FOREIGN_KEYS_L $DBH %TEMPLATE_H @CGI_PK %FORM_H );
 use base qw(DbFramework::DefinitionObject DbFramework::DataModelObject);
 use DbFramework::PrimaryKey;
 use DbFramework::DataType;
@@ -63,7 +90,9 @@ my %fields = (
 	      IS_ACCESSED_USING_L => undef,
 	      DBH                 => undef,
 	      TEMPLATE_H          => undef,
+	      FORM_H              => undef,
 	     );
+my $formsdir = '/usr/local/etc/dbframework/forms';
 
 ##-----------------------------------------------------------------------------
 ## CLASS METHODS
@@ -71,16 +100,17 @@ my %fields = (
 
 =head1 CLASS METHODS
 
-=head2 new($name,\@attributes,$primary,$dbh,\%templates)
+=head2 new($name,\@attributes,$primary,$dbh,\@forms)
 
 Create a new B<DbFramework::Table> object.  I<$dbh> is a DBI database
 handle which refers to a database containing a table named I<$table>.
 I<@attribues> is a list of B<DbFramework::Attribute> objects.
 I<$primary> is a B<DbFramework::PrimaryKey> object.  I<@attributes>
 and I<$primary> can be omitted if you plan to use the
-B<init_db_metadata()> object method (see below).  I<%templates> is a
-hash of template name value pairs (see the object method
-set_templates() below.)
+B<init_db_metadata()> object method (see below).  I<@forms> is a list
+of (I<form name>,I<file>) pairs.  Form files should contain a list of
+(I<template name>,I<template>) pairs. (see the object method
+read_form() below.)
 
 =cut
 
@@ -94,7 +124,14 @@ sub new {
   @{$self}{keys %fields} = values %fields;
   $self->is_identified_by(shift);
   $self->dbh(shift);
-  $self->set_templates(%{$_[0]}) if $_[0];
+  attr $self;
+  my $config = "$formsdir/" . $self->get_db($DBH) . "/$NAME/config.pl";
+  # table configuration
+  if ( -f $config ) {
+    my $code = _readfile_no_comments($config,"Couldn't open form config");
+    eval $code;
+  }
+  $self->form_h($_[0]) if $_[0];
   return $self;
 }
 
@@ -127,6 +164,12 @@ Returns a list of B<DbFramework::Attribute> objects.  I<@names> is a
 list of attribute names to return.  If I<@names> is undefined, all
 attributes associated with the table are returned.
 
+=head2 dbh($dbh)
+
+I<$dbh> is a DBI database handle.  If supplied, sets the database
+handle associated with the table.  Returns the database handle
+associated with the table.
+
 =cut
 
 sub get_attributes {
@@ -155,20 +198,15 @@ sub get_attribute_names {
 
 =head2 as_html_form()
 
-Returns HTML form fields for all non foreign key attributes in the
-table.
+Returns HTML form fields for all attributes in the table.
 
 =cut
 
 sub as_html_form {
   my $self = attr shift;
   my $form;
-  for ( @{$self->contains_l} ) {
-    next if $self->in_foreign_key($_);
-    $form .= $_->as_html_form_field . "\n";
-  }
-
-  return $form;
+  for ( @CONTAINS_L ) { $form .= "<tr><td>" . $_->as_html_form_field . "</td></tr>\n" }
+  $form;
 }
 
 #------------------------------------------------------------------------------
@@ -346,6 +384,7 @@ sub init_db_metadata {
     }
   }
   $self->is_accessed_using_l(\@keys);
+  die "no primary key defined in $NAME" unless defined($IS_IDENTIFIED_BY);
 
   $self->_templates;  # set default templates
 
@@ -394,8 +433,8 @@ sub validate_foreign_keys {
       my($fk_aname,$pk_aname) =
         ($fk_attributes[$i]->name,$pk_attributes[$i]->name);
       print STDERR "$fk_aname eq $pk_aname\n" if $_DEBUG;
-      $fk_aname eq $pk_aname ||
-        die "foreign key component $NAME:$fk_aname ne primary key component $pk_aname\n";
+      #$fk_aname eq $pk_aname ||
+      #  die "foreign key component $NAME:$fk_aname ne primary key component $pk_aname\n";
     }
   }
 }
@@ -441,7 +480,7 @@ sub insert {
   my $sql = "INSERT INTO $NAME $columns VALUES ($values)";
   print STDERR "$sql\n" if $_DEBUG;
   my $sth = $DBH->prepare($sql) || die $DBH->errstr;
-  my $rv  = $sth->execute       || die $sth->errstr;
+  my $rv  = $sth->execute       || die "$sql\n" . $sth->errstr . "\n";
   my $rc  = $sth->finish;
 
   return $sth->{'insertid'}; # id of auto_increment field (DBD::mysql specific)
@@ -507,8 +546,8 @@ sub select {
 
 =head2 fill_template($name,\%values)
 
-Return the filled template named I<$name>.  A template can contain
-special placeholders representing columns in a database table.
+Return the filled HTML template named I<$name>.  A template can
+contain special placeholders representing columns in a database table.
 Placeholders in I<$template> can take the following forms:
 
 =over 4
@@ -519,20 +558,36 @@ Placeholders in I<$template> can take the following forms:
 
 =item B<E<lt>DbField table.column value=value type=typeE<gt>>
 
-=item B<E<lt>DbValue table.columnE<gt>>
-
 =back
 
 If the table's name() matches I<table> in a B<DbField> placeholder,
 the placeholder will be replaced with the corresponding HTML form
 field for the column named I<column> with arguments I<value> and
 I<type> (see L<DbFramework::Attribute/html_form_field()>).  If
-I<%values> is supplied, placeholders will have the values in
-I<%values> added where a key in I<%values> matches a column name in
-the table.
+I<%values> is supplied placeholders will have the values in I<%values>
+added where a key in I<%values> matches a column name in the table.
 
-B<DbValue> placeholders will be replaced with the values in I<%values>
-where a key in I<%values> matches a column name in the table.
+=over 4
+
+=item B<E<lt>DbFKey table.fk_name[,column...]E<gt>>
+
+=back
+
+If the table's name() matches I<table> in a B<DbFKey> placeholder, the
+placeholder will be replaced with the a selection box containing
+values and labels from the primary key columns in the related table.
+Primary key attribute values in I<%values> will be used to select the
+default item in the selection box.
+
+=over 4
+
+=item B<E<lt>DbValue table.column[,column...]E<gt>>
+
+=back
+
+If the table's name() matches I<table> in a B<DbValue> placeholder,
+the placeholder will be replaced with the values in I<%values> where a
+key in I<%values> matches a column name in the table.
 
 =cut
 
@@ -541,22 +596,29 @@ sub fill_template {
   print STDERR "filling template '$name' for table '$NAME'\n" if $_DEBUG;
   return '' unless exists $TEMPLATE_H{$name};
   my $template = $TEMPLATE_H{$name};
-  print STDERR "template = \n$TEMPLATE_H{$name}\n" if $_DEBUG;
+
+  #print STDERR "template = \n$TEMPLATE_H{$name}\n\$values = ",%$values,"\n" if $_DEBUG;
+
 
   # insert values into template
   if ( defined($values) ) {
     $template =~ s/(<DbField\s+$NAME\.)(\w+)(\s+value=)(.*?\s*)>/$1$2 value=$values->{$2}>/g;
     $template =~ s/(<DbField $NAME\.)(\w+)>/$1$2 value=$values->{$2}>/g;
-    $template =~ s/<DbValue\s+$NAME\.(\w+)\s*>/$values->{$1}/g;
+    # handle multiple attributes here for foreign key values
+    $template =~ s/<DbValue\s+$NAME\.([\w,]+)\s*>/join(',',@{$values}{split(m{,},$1)})/eg;
   }
 
+  #print STDERR "template = \n$TEMPLATE_H{$name}\n\$values = ",%$values,"\n" if $_DEBUG;
+
   # foreign key placeholders
-  $template =~ s/<DbFKey\s+$NAME\.(\w+)\s*>/$self->_as_html_foreign_key($1)/eg;
+  my %fk = %{$self->has_foreign_keys_h};
+  $template =~ s/<DbFKey\s+$NAME\.(\w+)\s*>/$fk{$1}->as_html_form_field($values)/eg;
 
   # form field placeholders
   $template =~ s/<DbField\s+$NAME\.(\w+)\s+value=(.*?)\s+type=(.*?)>/$self->_as_html_form_field($1,$2,$3)/eg;
   $template =~ s/<DbField\s+$NAME\.(\w+)\s+value=(.*?)>/$self->_as_html_form_field($1,$2)/eg;
   $template =~ s/<DbField $NAME\.(\w+)>/$self->_as_html_form_field($1)/eg;
+
   $template;
 }
 
@@ -566,14 +628,6 @@ sub _as_html_form_field {
   my($self,$attribute) = (shift,shift);
   my @attributes = $self->get_attributes($attribute);
   $attributes[0]->as_html_form_field(@_);
-}
-
-#------------------------------------------------------------------------------
-
-sub _as_html_foreign_key {
-  my($self,$fk_name) = @_;
-  attr $self;
-  $self->has_foreign_keys_h_byname($fk_name)->references->html_select_field;
 }
 
 #------------------------------------------------------------------------------
@@ -616,11 +670,66 @@ sub _template {
   my($self,$key,$method) = (attr shift,shift,shift);
   my @fk_attributes;
   for ( @HAS_FOREIGN_KEYS_L ) { push(@fk_attributes,$_->attribute_names) }
-  my $t = $IS_IDENTIFIED_BY->$method(@fk_attributes);
+  my $t = $IS_IDENTIFIED_BY->$method(@fk_attributes) || '';
   for ( $self->non_key_attributes ) { $t .= $_->$method($NAME) }
   for ( @IS_ACCESSED_USING_L )      { $t .= $_->$method() }
   for ( @HAS_FOREIGN_KEYS_L )       { $t .= $_->$method() }
   $self->template_h_add({$key => $t});
+}
+
+#------------------------------------------------------------------------------
+
+=head2 read_form($form,$dir)
+
+Configure templates by evaluating the contents of
+F<$dir/$db/$table/$form> where I<$dir> is a directory
+(F</usr/local/etc/dbframework> by default), I<$db> is the name of the
+database containing the table, I<$table> is the name of the table and
+I<$form> is the name of the form containing the template definitions.
+See L<Forms and Templates>.
+
+=cut
+
+sub read_form {
+  my $self = attr shift;
+  my $dir  = $_[1] || $formsdir;
+  my $form = "$dir/".$self->get_db($DBH)."/$NAME/$FORM_H{$_[0]}";
+  my $templates = _readfile_no_comments($form,"Couldn't open form");
+  %TEMPLATE_H = eval $templates;
+}
+
+#------------------------------------------------------------------------------
+
+sub _readfile_no_comments {
+  my($file,$error) = @_;
+  open FH,"<$file" or die "$error: $file: $!";
+  my $lines;
+  while (<FH>) {
+    next if /^\s*#/;
+    $lines .= $_;
+  }
+  close FH;
+  $lines;
+}
+
+#------------------------------------------------------------------------------
+
+=head2 as_html_heading()
+
+Returns a string for use as a table heading row in an HTML table;
+
+=cut
+
+sub as_html_heading {
+  my $self = attr shift;
+  my $method = 'as_html_heading';
+  my @fk_attributes;
+  for ( @HAS_FOREIGN_KEYS_L ) { push(@fk_attributes,$_->attribute_names) }
+  my $html = $IS_IDENTIFIED_BY->$method(@fk_attributes);
+  for ( $self->non_key_attributes ) { $html .= $_->$method() }
+  for ( @IS_ACCESSED_USING_L )      { $html .= $_->$method() }
+  for ( @HAS_FOREIGN_KEYS_L )       { $html .= $_->$method() }
+  "<TR>$html</TR>";
 }
 
 1;

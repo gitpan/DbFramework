@@ -13,6 +13,7 @@ DbFramework::Attribute - Attribute class
   $sql  = $a->as_sql;
   $s    = $a->as_string;
   $html = $a->as_html_form_field($value,$type);
+  $html = $a->as_html_heading;
 
 =head1 DESCRIPTION
 
@@ -137,44 +138,20 @@ sub as_html_form_field {
   my $length = $REFERENCES->length;
   my $html;
 
-# we'll worry about foreign keys another day
-
-# set the flag to add a 'NULL' FK entry 
-# based on 'NOT NULL' constraint
-
-#  if ( $this_column->ForeignKey ) {
-#    my($fk_pk_values,$fk_pk_labels) =
-#      $self->{SCHEMA}->get_fk_pk_labels($this_column,1);
-
-    # null query string as we just want this object 
-    # for its methods
-#    my $cgi = new CGI('');
-#    if ( $this_column->ManyToMany ) {
-#      $html = $cgi->scrolling_list(-name=>$this_column->name, 
-#				   -values=>$fk_pk_values,
-#				   -labels=>$fk_pk_labels,
-#				   -multiple=>'true');
-#    } else {
-#      $html = $cgi->popup_menu(-name=>$this_column->Name,
-#			       -values=>$fk_pk_values,
-#			       -labels=>$fk_pk_labels);
-#    }
-#  }
-
-    SWITCH: {
-      $type =~ /INT/ &&
-	do { 
-	  $html = qq{<INPUT NAME="$NAME" VALUE="$value" SIZE=10 TYPE="text">};
-	  last SWITCH;
-	};
-      $type =~ /CHAR$/ &&
-	do {
-	  $html = qq{<INPUT NAME="$NAME" VALUE="$value" SIZE=30 TYPE="text" MAXLENGTH=$length>};
-	  last SWITCH;
-	};
-      $type eq 'TEXT' &&
-	do {
-	  $value =~ s/'//g;	# remove quotes
+ SWITCH: {
+    $type =~ /INT/ &&
+      do { 
+	$html = qq{<INPUT NAME="$NAME" VALUE="$value" SIZE=10 TYPE="text">};
+	last SWITCH;
+      };
+    $type =~ /CHAR$/ &&
+      do {
+	$html = qq{<INPUT NAME="$NAME" VALUE="$value" SIZE=30 TYPE="text" MAXLENGTH=$length>};
+	last SWITCH;
+      };
+    $type eq 'TEXT' &&
+      do {
+	$value =~ s/'//g;	# remove quotes
 	  $html  = qq{<TEXTAREA COLS=60 NAME="$NAME" ROWS=4>$value</TEXTAREA>};
 	  last SWITCH;
 	};
@@ -215,11 +192,7 @@ sub as_string {
 
 sub _input_template {
   my($self,$t_name) = (attr shift,shift);
-  return qq{<TR>
-<TD BGCOLOR='$BGCOLOR'><STRONG>$NAME</STRONG></TD>
-<TD><DbField ${t_name}.$NAME></TD>
-</TR>
-};
+  return qq{<TD><DbField ${t_name}.$NAME></TD>};
 }
 
 ##----------------------------------------------------------------------------
@@ -227,6 +200,21 @@ sub _input_template {
 sub _output_template {
   my($self,$t_name) = (attr shift,shift);
   return qq{<TD BGCOLOR='$BGCOLOR'><DbValue ${t_name}.$NAME></TD>};
+}
+
+#-----------------------------------------------------------------------------
+
+=head2 as_html_heading()
+
+Returns a string for use as a column heading cell in an HTML table;
+
+=cut
+
+sub as_html_heading {
+  my $self = attr shift;
+  my $text = $NAME;
+  $text .= ' ('.$REFERENCES->extra.')' if $REFERENCES->extra;
+  qq{<TD BGCOLOR='$BGCOLOR'>$text</TD>};
 }
 
 1;

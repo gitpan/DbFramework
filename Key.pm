@@ -11,6 +11,7 @@ DbFramework::Key - Key class
   @names = $k->attribute_names;
   $sql   = $k->as_sql;
   $table = $k->belongs_to($table);
+  $html  = $k->as_html_heading;
 
 =head1 DESCRIPTION
 
@@ -126,12 +127,8 @@ sub _input_template {
   my $bgcolor = $self->bgcolor;
   for ( @INCORPORATES_L ) {
     my $a_name = $_->name;
-    $in .= qq{<TR>
-<TD BGCOLOR='$bgcolor'><STRONG>$a_name</STRONG></TD>
-<TD><DbField ${t_name}.${a_name}></TD>
-</TR>
-};
-}
+    $in .= qq{<TD><DbField ${t_name}.${a_name}></TD>};
+  }
   $in;
 }
 
@@ -146,6 +143,22 @@ sub _output_template {
     $out .= qq{<TD BGCOLOR='$BGCOLOR'><DbValue ${t_name}.${a_name}></TD>};
   }
   $out;
+}
+
+#-----------------------------------------------------------------------------
+
+=head2 as_html_heading()
+
+Returns a string for use as a column heading cell in an HTML table;
+
+=cut
+
+sub as_html_heading {
+  my $self = attr shift;
+  my $html = "<TD BGCOLOR='$BGCOLOR' COLSPAN=".scalar(@INCORPORATES_L).">";
+  for ( @INCORPORATES_L ) { $html .= $_->name . ',' }
+  chop($html);
+  "$html</TD>";
 }
 
 1;

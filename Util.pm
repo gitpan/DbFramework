@@ -8,6 +8,7 @@ DbFramework::Util - DbFramework utility functions
   ($user,$password) = DbFramework::Util::get_auth();
   $dbh = DbFramework::Util::get_dbh($db,$host,$port,$user,$password);
   $object->get_db($dbh);
+  $object->debug($n);
 
 =head1 DESCRIPTION
 

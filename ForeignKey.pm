@@ -7,7 +7,8 @@ DbFramework::ForeignKey - Foreign Key class
   use DbFramework::ForeignKey;
   my $fk = new DbFramework::ForeignKey($name,\@attributes,$primary);
   $fk->references($primary);
-  $sql = $fk->as_sql;
+  $sql   = $fk->as_sql;
+  $html  = $fk->as_html_form_field(\%values);
 
 =head1 DESCRIPTION
 
@@ -24,7 +25,7 @@ package DbFramework::ForeignKey;
 use strict;
 use base qw(DbFramework::Key);
 use Alias;
-use vars qw( $NAME $BELONGS_TO @INCORPORATES_L $BGCOLOR );
+use vars qw( $NAME $BELONGS_TO @INCORPORATES_L $BGCOLOR $_DEBUG );
 
 # CLASS DATA
 
@@ -83,33 +84,48 @@ foreign key.
 sub _input_template {
   my $self   = attr shift;
   my $t_name = $BELONGS_TO ? $BELONGS_TO->name : 'UNKNOWN_TABLE';
-  return qq{<TR>
-<TD BGCOLOR='$BGCOLOR'><STRONG>$NAME</STRONG></TD>
-<TD><DbFKey ${t_name}.$NAME></TD>
-</TR>
-};
+  return qq{<TD><DbFKey ${t_name}.$NAME></TD>};
 }
 
 #-----------------------------------------------------------------------------
 
-# yikes! how do I do this?
-
 sub _output_template {
-  my $self   = attr shift;
-  my $t_name = $BELONGS_TO ? $BELONGS_TO->name : 'UNKNOWN_TABLE';
-  my $out;
-  for ( @INCORPORATES_L ) {
-    my $a_name = $_->name;
-    $out .= qq{<TD BGCOLOR='$BGCOLOR'><DbValue ${t_name}.${a_name}></TD>};
-  }
+  my $self = attr shift;
+  # output template consists of attributes from related pk table
+  my $pk_table   = $self->references->belongs_to;
+  my $name       = $pk_table->name;
+  my $attributes = join(',',$pk_table->get_attribute_names);
+  my $out = qq{<TD BGCOLOR='$BGCOLOR'><DbValue ${name}.$attributes></TD>};
+  print STDERR "\$out = $out\n" if $_DEBUG;
   $out;
+}
+
+#------------------------------------------------------------------------------
+
+=head2 as_html_form_field(\%values)
+
+Returns an HTML selection box containing values and labels from the
+primary key columns in the related table. I<%values> is a hash whose
+keys are the attribute names of the foreign key and whose values
+indicate the item in the selection box which should be selected by
+default.  See L<DbFramework::PrimaryKey/html_select_field()>.
+
+=cut
+
+sub as_html_form_field {
+  my $self      = attr shift;
+  my %values    = $_[0] ? %{$_[0]} : ();
+  my $pk        = $self->references;
+  my @fk_values = @values{$self->attribute_names}; # hash slice
+  my $name      = join(',',$self->attribute_names);
+  $pk->html_select_field(undef,undef,\@fk_values,$name);
 }
 
 1;
 
 =head1 SEE ALSO
 
-L<DbFramework::Key>, L<DbFramework::PrimaryKey>
+L<DbFramework::Key>, L<DbFramework::PrimaryKey>.
 
 =head1 AUTHOR
 

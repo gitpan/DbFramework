@@ -46,7 +46,7 @@ B<DbFramework::Util>
 package DbFramework::Persistent;
 use strict;
 use vars qw( $TABLE $_DEBUG $VERSION );
-$VERSION = '1.03';
+$VERSION = '1.06';
 use base qw(DbFramework::Util);
 use Alias;
 use DbFramework::Table;
@@ -175,10 +175,12 @@ sub select {
   my @things;
   my @columns = $TABLE->get_attribute_names;
   for ( $TABLE->select(\@columns,shift) ) {
-    print STDERR "@{$_}\n" if $_DEBUG;
-    my $thing = $self->new($TABLE->name,$TABLE->dbh);
+    print STDERR "\@{\$_} = @{$_}\n" if $_DEBUG;
+    # pass Table *object* to new to retain any fk relationships
+    my $thing = $self->new($TABLE,$TABLE->dbh);
     my %attributes;
     for ( my $i = 0; $i <= $#columns; $i++ ) {
+      print STDERR "assigning $columns[$i] = $_->[$i]\n" if $_DEBUG;
       $attributes{$columns[$i]} = $_->[$i];
     }
     $thing->attributes_h([%attributes]);

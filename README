@@ -1,12 +1,14 @@
 DbFramework is a collection of classes for manipulating Mysql
 databases.  The classes are loosely based on the CDIF Data Model
-Subject Area (http://www.cdif.org/).  There are methods for
-representing data model objects as HTML and a class which can be
-subclassed to add persistency to Perl objects.  See the POD for
-further details.
+Subject Area.
 
-The classes are used by a CGI application which presents an HTML forms
-interface for manipulating Mysql databases.
+This module will help you to
+
+  - Present data model objects (tables, columns) as HTML
+  - Add persistency to your Perl objects
+  - Manipulate your Mysql databases through an HTML forms interface
+
+See the POD for further details.
 
 paul@miraclefish.com
 
@@ -32,7 +34,7 @@ Installation
 HTML forms application
 ----------------------
 Read the 'DATA MODEL RULES' section in the DataModel man page for
-important information on how to create your database schemas.
+important information on how to create your database schema.
 
 Install forms/dbforms.cgi in a CGI directory.  Call it with
 
@@ -43,6 +45,23 @@ where 'foo' is the name of a Mysql database.
 
 To do
 =====
+* Tue Jan 12, 1999
+  BUG - dbforms.cgi/Persistent.pm can't update columns in the pk e.g. where an
+        attribute in the pk is a fk
+  FEATURE - 'subforms'
+  FEATURE - arbitrary sql in templates
+
+* Fri Jan 8, 1999
+  BUG - >1 fk relating to the same pk table in a single table is not
+       handled by dbforms.cgi
+
+* Fri Jan  1 23:40:32 GMT 1999
+  Select and modify pane column order sometimes don't match
+  
+4/1/1999
+  - User-defined templates specify attributes to be used for foreign keys
+  - Allow relationships between the same table (in different roles).
+    Needs documenting
 
 * Make Bundle::DbFramework
 
@@ -54,8 +73,6 @@ To do
 * Attributes of relationships should be stored so that full schema
   including attributes of relationships can be built from meta-data.
 
-* Generic add, modify, delete support (a la Msql-RDBMS?)
-
 * add support for UNIQUE columns (different to ordinary KEYs)
 
 * make primary key in grammar optional (1:1 relationships) 
@@ -64,6 +81,57 @@ To do
 
 History
 =======
+-------------------------------------------------------------------------------
+RELEASE 1.06
+
+= UI
+  Default input templates now produce 'datasheet' view.
+
+= API
+  Attribute::
+    - New method as_html_heading()
+  Key::
+    - New method as_html_heading()
+  PrimaryKey::
+    - New method as_html_heading()
+  Table::
+    - New method as_html_heading()
+
+6-1-1999                    Paul Sharpe                  <paul@miraclefish.com>
+-------------------------------------------------------------------------------
+RELEASE 1.05
+
+= INTERFACE
+  Table
+    - New method dbh($dbh) (added pod for AUTOLOAD() method)
+    = Improved form and template support
+      - new() now takes list of forms rather than template definitions and
+        evals configuration from config.pl files.
+      - New method read_form()
+      - More pod  
+  - Default output templates now handle foreign keys by replacing them
+    with columns from the related table.
+  - <DbValue> template tag can now contain a list of attributes to be
+    substituted for values.
+  dbforms.cgi
+    - fills values from related table for foreign keys in default
+      output template.
+    - Now handles user-defined forms.
+
+18-Dec-1998                 Paul Sharpe                  <paul@miraclefish.com>
+-------------------------------------------------------------------------------
+RELEASE 1.04
+
+= INTERFACE
+  ForeignKey
+    - New method as_html_form_field(\%values)
+  Table
+    - as_html_form() now returns fields for foreign keys too.
+    - fill_template() now creates selection boxes for <DbFKey> tags.
+
+= dbforms.cgi
+  New experimental UI separating search and modify.
+  Catches and displays SQL errors.
 
 11-Dec-1998                 Paul Sharpe                  <paul@miraclefish.com>
 -------------------------------------------------------------------------------
@@ -77,7 +145,7 @@ RELEASE 1.02
 - Bug fixes: Table::select(), Attribute::as_html_form_field()
 - INTERFACE
   *_h_byname() methods take an array rather than an arrayref
-  Persistent::
+  Persistent
     - New method make_class()
     - New method fill_template()
     - New method as_html_form()

@@ -18,5 +18,5 @@ forms/dbforms.cgi
 t/10base.t
 t/20table.t
 t/30persistent.t
-t/50html.t
 t/template
+t/test/foo/foo.form

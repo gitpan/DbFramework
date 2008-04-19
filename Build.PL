@@ -1,14 +1,12 @@
 #! /usr/bin/perl -w
-# See lib/ExtUtils/MakeMaker.pm for details of how to influence
-# the contents of the Makefile that is written.
-use ExtUtils::MakeMaker;
+use Module::Build;
 require './Util.pm';
 require 't/util.pl';
 
 $catalog_db = 'dbframework_catalog';
 %keytypes   = (primary => 0, foreign => 1, index => 2);
 
-prompt(<<EOF);
+Module::Build->prompt(<<EOF, "");
 
 Because there is so much variation in the syntax for creating
 databases between different engines, DbFramework requires that you
@@ -21,27 +19,27 @@ EOF
 
 my $config = 't/Config.pm';
 
-unless ( -f $config && prompt("$config exists, use it?", "Y") =~ /^y/i ) {
+unless ( -f $config && Module::Build->prompt("$config exists, use it?", "Y") =~ /^y/i ) {
   # select drivers to test
   my @drivers = qw/mysql mSQL Pg/;
-  my $drivers = prompt("Enter (space seperated) DBI drivers to test:", join(" ", @drivers));
+  my $drivers = Module::Build->prompt("Enter (space seperated) DBI drivers to test:", join(" ", @drivers));
   @drivers = split /\s/,$drivers;
   $test_db = 'dbframework_test';
 
   my %driver;
   for my $driver ( @drivers ) {
-    $test_db = prompt("\nConfiguring for driver 'DBI:$driver'\nEnter the name of your test database:", $test_db);
+    $test_db = Module::Build->prompt("\nConfiguring for driver 'DBI:$driver'\nEnter the name of your test database:", $test_db);
     print "\n";
     for my $db ( $catalog_db, $test_db ) {
       print "Configuring database '$db'\n";
       my $dsn = "DBI:$driver:$db";
-      $_ = prompt(qq{Enter the portion of the DSN that DBD::$driver will use to connect()
+      $_ = Module::Build->prompt(qq{Enter the portion of the DSN that DBD::$driver will use to connect()
 to $db i.e. 'DBI:$driver:[dsn_string]':}, $db);
       $driver{$driver}->{$db}->{dsn} = "DBI:$driver:$_";
       ($driver{$driver}->{$db}->{u},$driver{$driver}->{$db}->{p})
 	= DbFramework::Util::get_auth();
       if ( $db eq $catalog_db ) {
-	if ( prompt("Create schema for '$catalog_db' in DBI:$driver?", "N") =~ /^n/i ) {
+	if ( Module::Build->prompt("Create schema for '$catalog_db' in DBI:$driver?", "N") =~ /^n/i ) {
 	  # create catalog schema
 	  my %sql = %{catalog_schema()};
 	  # default to mysql DDL syntax
@@ -274,25 +272,28 @@ CREATE TABLE c_table (
 	 }
 }
 
-# LICENSE is only availabe since ExtUtils::MakeMaker 6.30_01
-use vars qw(%license $eummver);
-%license = qw();
-$eummver = $ExtUtils::MakeMaker::VERSION;
-$eummver =~ s/_//;
-%license = (LICENSE => "perl") if $eummver > 6.30;
-
-WriteMakefile(
-    "NAME"	    => "DbFramework",
-    "VERSION"       => "1.11",
-    "ABSTRACT"      => "Classes for Manipulating DBI Databases, Based on the CDIF Data Model Subject Area",
-    "AUTHOR"        => "imacat <imacat\@mail.imacat.idv.tw>",
-    "PREREQ_PM"     => { "Alias" => 0, "DBI" => 1.06,
-			"CGI" => 0, "Text::FillIn" => 0,
-		        "URI::Escape" => 0, "Term::ReadKey" => 0, },
-    "PMLIBDIRS"     => [ "DataType" ],
-    "clean"         => { FILES => "t/Config.pm TAGS" },
-    "linkext"       => { LINKTYPE=>"" },
-    "dist"          => {"COMPRESS"=>"gzip -9f", "SUFFIX" => "gz"},
-    %license,
-    "SIGN"          => 1,
+my $build = Module::Build->new(
+    dist_name       => "DbFramework",
+    dist_version    => "1.11",
+    dist_abstract   => "Classes for Manipulating DBI Databases, Based on the CDIF Data Model Subject Area",
+    dist_author     => "imacat <imacat\@mail.imacat.idv.tw>",
+    license         => "perl",
+    sign            => 1,
+    
+    requires        => {
+        "Alias"			=> 0,
+        "DBI"			=> 1.06,
+        "CGI"			=> 0,
+        "Text::FillIn"		=> 0,
+        "URI::Escape"		=> 0,
+        "Term::ReadKey"		=> 0,
+    },
+    build_requires		=> {
+        "Module::Signature"	=> 0,
+    },
+    add_to_cleanup	=> [ "t/Config.pm", "TAGS" ],
 );
+
+$build->create_build_script;
+
+__END__

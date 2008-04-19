@@ -1,6 +1,31 @@
 DbFramework is a collection of classes for manipulating DBI databases.
 The classes are loosely based on the CDIF Data Model Subject Area.
 
+Note: Do not use DbFramework.  I believe it is outdated and not working
+anymore.  I obtained its ownership only to keep it clean until it is
+retired.  If you were using DbFramework, consider other, more recent
+solutions like XML instead.
+
+The last release 1.10 of DbFramework is due 1999-05-13, even before Perl
+5.005_03.  As today is 2008-04-19, that is NINE years ago.  It is not
+suprising DbFramework does not work now.  If you are still using CDIF
+Data Model Subject Area, it might be easier to migrate your code to use
+XML, than to make DbFramework working.  Besides, DbFramework takes
+a CPAN root namespace, DbFramework::*, which is not right, too.
+
+DbFramework was written by Paul Sharpe (paul@miraclefish.com, CPAN ID:
+PSHARPE).  If you are looking for older versions, see Paul's BackPen
+directory:
+http://backpan.perl.org/authors/id/P/PS/PSHARPE/
+
+Please report bugs to rt.cpan.org.  Even that I may not fix them, they
+are still public records that could help the others understanding them.
+
+By imacat <imacat@mail.imacat.idv.tw>, written 2008-04-19.
+=============
+DbFramework is a collection of classes for manipulating DBI databases.
+The classes are loosely based on the CDIF Data Model Subject Area.
+
 This module will help you to
 
   - Present data model objects (tables, columns) as HTML

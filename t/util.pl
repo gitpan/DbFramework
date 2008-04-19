@@ -51,26 +51,4 @@ sub connect_args($$) {
   return($db_name,$dsn,$u,$p);
 }
 
-sub yn($$) {
-  my($prompt,$default) = @_;
-  if ( $default ) {
-    $answer = 'Y'; $prompt .= ': (Y/n) ';
-  } else {
-    $answer = 'N'; $prompt .= ': (y/N) ';
-  }
-  my $in = '';
-  while ( 1 ) {
-    print $prompt;
-    $in = <STDIN>;
-    last if $in =~ /^\n$/;
-    chop $in;
-    $in = uc($in);
-    if ( $in =~ /^(Y|N)$/ ) {
-      $answer = $in;
-      last;
-    }
-  }
-  return ($answer eq 'Y') ? 1 : 0;
-}
-
 1;

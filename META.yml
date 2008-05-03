@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                DbFramework
-version:             1.11
+version:             1.12
 abstract:            Classes for Manipulating DBI Databases, Based on the CDIF Data Model Subject Area
 license:             perl
 author:              

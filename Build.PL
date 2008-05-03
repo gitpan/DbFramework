@@ -1,6 +1,7 @@
 #! /usr/bin/perl -w
 use Module::Build;
-require './Util.pm';
+use lib qw(lib);
+use DbFramework::Util;
 require 't/util.pl';
 
 $catalog_db = 'dbframework_catalog';
@@ -24,7 +25,7 @@ unless ( -f $config && Module::Build->prompt("$config exists, use it?", "Y") =~ 
   my @drivers = qw/mysql mSQL Pg/;
   my $drivers = Module::Build->prompt("Enter (space seperated) DBI drivers to test:", join(" ", @drivers));
   @drivers = split /\s/,$drivers;
-  $test_db = 'dbframework_test';
+  $test_db = 'test';
 
   my %driver;
   for my $driver ( @drivers ) {
@@ -32,14 +33,23 @@ unless ( -f $config && Module::Build->prompt("$config exists, use it?", "Y") =~ 
     print "\n";
     for my $db ( $catalog_db, $test_db ) {
       print "Configuring database '$db'\n";
-      my $dsn = "DBI:$driver:$db";
+      my $dsn;
+      if ($driver eq "mysql") {
+        $dsn = "database=$db";
+      } elsif ($driver eq "mSQL") {
+        $dsn = "database=$db";
+      } elsif ($driver eq "Pg") {
+        $dsn = "dbname=$db";
+      } else {
+        die "unknown DBI driver: $db";
+      }
       $_ = Module::Build->prompt(qq{Enter the portion of the DSN that DBD::$driver will use to connect()
 to $db i.e. 'DBI:$driver:[dsn_string]':}, $db);
       $driver{$driver}->{$db}->{dsn} = "DBI:$driver:$_";
       ($driver{$driver}->{$db}->{u},$driver{$driver}->{$db}->{p})
 	= DbFramework::Util::get_auth();
       if ( $db eq $catalog_db ) {
-	if ( Module::Build->prompt("Create schema for '$catalog_db' in DBI:$driver?", "N") =~ /^n/i ) {
+	if ( Module::Build->prompt("Create schema for '$catalog_db' in DBI:$driver?", "N") !~ /^n/i ) {
 	  # create catalog schema
 	  my %sql = %{catalog_schema()};
 	  # default to mysql DDL syntax
@@ -274,7 +284,7 @@ CREATE TABLE c_table (
 
 my $build = Module::Build->new(
     dist_name       => "DbFramework",
-    dist_version    => "1.11",
+    dist_version    => "1.12",
     dist_abstract   => "Classes for Manipulating DBI Databases, Based on the CDIF Data Model Subject Area",
     dist_author     => "imacat <imacat\@mail.imacat.idv.tw>",
     license         => "perl",

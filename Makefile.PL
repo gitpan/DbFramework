@@ -2,7 +2,8 @@
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
 use ExtUtils::MakeMaker;
-require './Util.pm';
+use lib qw(lib);
+use DbFramework::Util;
 require 't/util.pl';
 
 $catalog_db = 'dbframework_catalog';
@@ -26,7 +27,7 @@ unless ( -f $config && prompt("$config exists, use it?", "Y") =~ /^y/i ) {
   my @drivers = qw/mysql mSQL Pg/;
   my $drivers = prompt("Enter (space seperated) DBI drivers to test:", join(" ", @drivers));
   @drivers = split /\s/,$drivers;
-  $test_db = 'dbframework_test';
+  $test_db = 'test';
 
   my %driver;
   for my $driver ( @drivers ) {
@@ -34,14 +35,23 @@ unless ( -f $config && prompt("$config exists, use it?", "Y") =~ /^y/i ) {
     print "\n";
     for my $db ( $catalog_db, $test_db ) {
       print "Configuring database '$db'\n";
-      my $dsn = "DBI:$driver:$db";
+      my $dsn;
+      if ($driver eq "mysql") {
+        $dsn = "database=$db";
+      } elsif ($driver eq "mSQL") {
+        $dsn = "database=$db";
+      } elsif ($driver eq "Pg") {
+        $dsn = "dbname=$db";
+      } else {
+        die "unknown DBI driver: $db";
+      }
       $_ = prompt(qq{Enter the portion of the DSN that DBD::$driver will use to connect()
-to $db i.e. 'DBI:$driver:[dsn_string]':}, $db);
+to $db i.e. 'DBI:$driver:[dsn_string]':}, $dsn);
       $driver{$driver}->{$db}->{dsn} = "DBI:$driver:$_";
       ($driver{$driver}->{$db}->{u},$driver{$driver}->{$db}->{p})
 	= DbFramework::Util::get_auth();
       if ( $db eq $catalog_db ) {
-	if ( prompt("Create schema for '$catalog_db' in DBI:$driver?", "N") =~ /^n/i ) {
+	if ( prompt("Create schema for '$catalog_db' in DBI:$driver?", "N") !~ /^n/i ) {
 	  # create catalog schema
 	  my %sql = %{catalog_schema()};
 	  # default to mysql DDL syntax
@@ -282,17 +292,27 @@ $eummver =~ s/_//;
 %license = (LICENSE => "perl") if $eummver > 6.30;
 
 WriteMakefile(
-    "NAME"	    => "DbFramework",
-    "VERSION"       => "1.11",
-    "ABSTRACT"      => "Classes for Manipulating DBI Databases, Based on the CDIF Data Model Subject Area",
-    "AUTHOR"        => "imacat <imacat\@mail.imacat.idv.tw>",
-    "PREREQ_PM"     => { "Alias" => 0, "DBI" => 1.06,
-			"CGI" => 0, "Text::FillIn" => 0,
-		        "URI::Escape" => 0, "Term::ReadKey" => 0, },
-    "PMLIBDIRS"     => [ "DataType" ],
-    "clean"         => { FILES => "t/Config.pm TAGS" },
-    "linkext"       => { LINKTYPE=>"" },
-    "dist"          => {"COMPRESS"=>"gzip -9f", "SUFFIX" => "gz"},
+    NAME		=> "DbFramework",
+    VERSION		=> "1.12",
+    ABSTRACT		=> "Classes for Manipulating DBI Databases, Based on the CDIF Data Model Subject Area",
+    AUTHOR		=> "imacat <imacat\@mail.imacat.idv.tw>",
     %license,
-    "SIGN"          => 1,
+    PREREQ_PM		=> {
+        "Alias"			=> 0,
+        "DBI"			=> 1.06,
+        "CGI"			=> 0,
+        "Text::FillIn"		=> 0,
+        "URI::Escape"		=> 0,
+        "Term::ReadKey"		=> 0,
+    },
+    PL_FILES		=> { },
+    SIGN		=> 1,
+    
+    dist		=> {
+        COMPRESS	=> "gzip -9",
+        SUFFIX		=> ".gz",
+    },
+    clean		=> {
+        FILES		=> "t/Config.pm TAGS",
+    },
 );
